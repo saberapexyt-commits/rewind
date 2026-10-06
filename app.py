@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.2"
+VERSION = "1.0.3"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -100,6 +100,7 @@ class App:
         self.tray_hint_shown = False
         self.update = None  # {"version", "url", ...} when GitHub has a newer release
         self.update_status = {"state": "idle", "checked": None, "error": ""}
+        self._durations = {}
 
     def check_update(self, manual=False):
         """Look for a newer GitHub release; when running as the exe, download it in the background."""
@@ -274,6 +275,15 @@ class App:
             return []
         return [p for p in list(d.glob("*.mp4")) + list(d.glob("*/*.mp4")) if not p.parent.name.startswith(".")]
 
+    def clip_duration(self, p, st):
+        key = (str(p), st.st_mtime)
+        if key not in self._durations:
+            try:
+                self._durations[key] = round(engine.duration_of(p))
+            except Exception:
+                self._durations[key] = 0
+        return self._durations[key]
+
     def clips(self):
         d = Path(self.settings["clips_dir"])
         out = []
@@ -281,7 +291,8 @@ class App:
             st = p.stat()
             out.append({"name": p.relative_to(d).as_posix(), "title": p.stem,
                         "game": p.parent.name if p.parent != d else "",
-                        "size_mb": round(st.st_size / 1e6, 1), "mtime": st.st_mtime})
+                        "size_mb": round(st.st_size / 1e6, 1), "mtime": st.st_mtime,
+                        "duration": self.clip_duration(p, st)})
         return out
 
     def clip_path(self, name):
