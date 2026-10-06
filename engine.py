@@ -356,6 +356,11 @@ def audio_devices():
         pa.terminate()
 
 
+def is_virtual_mic(name):
+    n = name.lower()
+    return any(k in n for k in ("voicemeeter", "virtual", "stereo mix", "vb-audio", "cable output"))
+
+
 class AudioPump(threading.Thread):
     """Writes a steady real-time 48 kHz stream to ffmpeg, filling silence with zeros.
 
@@ -367,7 +372,7 @@ class AudioPump(threading.Thread):
         self.write, self.on_error = write, on_error
         self.alive = True
         self.levels = deque(maxlen=300 * 4)  # one peak value per 0.25 s
-        self.sources, self.pa = [], None
+        self.sources, self.pa, self.mic_error = [], None, ""
         if TEST:
             if desktop:
                 self.sources.append(ToneCapture())
@@ -383,14 +388,26 @@ class AudioPump(threading.Thread):
                         spk = lb
                         break
             self.sources.append(WasapiCapture(pa_mod, self.pa, spk))
+        self.mic_error = ""
         if mic:
+          try:
             dev = None
+            mics = []
             for i in range(api["deviceCount"]):
                 d = self.pa.get_device_info_by_host_api_device_index(api["index"], i)
-                if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice") and d["name"] == mic_name:
-                    dev = d
-            dev = dev or self.pa.get_device_info_by_index(api["defaultInputDevice"])
+                if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice"):
+                    mics.append(d)
+                    if d["name"] == mic_name:
+                        dev = d
+            if dev is None:
+                dev = self.pa.get_device_info_by_index(api["defaultInputDevice"])
+                # Windows' default input is often a silent virtual device (Voicemeeter, Oculus, Stereo Mix): prefer a real mic
+                if is_virtual_mic(dev["name"]):
+                    dev = next((m for m in mics if not is_virtual_mic(m["name"])), dev)
             self.sources.append(WasapiCapture(pa_mod, self.pa, dev, gain=1.2))
+          except Exception as e:  # no mic, or Windows is blocking it: keep recording game sound
+            self.mic_error = ("Couldn't use the microphone. Check Windows Settings > Privacy > Microphone "
+                              f"and that a mic is plugged in. ({e})")
 
     def run(self):
         t0, written, acc_peak, acc_n = time.monotonic(), 0, 0.0, 0
@@ -566,6 +583,8 @@ class Recorder:
                 self.pump = AudioPump(self.proc.stdin.write, s["desktop_audio"], s["mic"], s.get("mic_device"),
                                       on_error=self._set_error)
                 self.pump.start()
+                if self.pump.mic_error:
+                    self.notice = self.pump.mic_error
             except Exception as e:
                 self.pump = None
                 self._set_error(f"Couldn't open audio: {e}")

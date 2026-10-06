@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.1"
+VERSION = "1.0.2"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -49,7 +49,7 @@ def version_tuple(v):
 
 DEFAULTS = {
     "length": 30, "fps": 60, "quality": "balanced", "encoder": "auto", "monitor": 0,
-    "desktop_audio": True, "mic": False, "mic_device": None,
+    "desktop_audio": True, "mic": True, "mic_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "sound": True, "sound_name": "chime", "sound_volume": "medium",
     "capture": "auto", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],

@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.2
+
+- **Microphone on by default.** Your voice is mixed into clips. If Windows' default mic is a silent virtual device (like Voicemeeter), Rewind picks a real microphone instead. A Mic on/off button sits on Home, and the mic can be chosen in Settings → Audio.
+
 ## 1.0.1
 
 - New neon Home screen: a big Save replay button, game-art recent replays, no waveform.

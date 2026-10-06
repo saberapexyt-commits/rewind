@@ -297,6 +297,7 @@
   .hero2 kbd { background: #1b2540; border-color: #34436b; }
   .hero2 .gamebar { margin: 0 0 14px; }
   .hero2 .chip { background: rgba(12,18,32,.7); backdrop-filter: blur(4px); }
+  .btn.on { border-color: var(--cyan); color: var(--cyan); }
   .hero2 .err { margin: 8px 0 0; color: var(--red); font-size: 13.5px; } .hero2 .err:empty { display: none; }
 
   .orbwrap { display: grid; place-items: center; padding: 6px 10px; }
@@ -391,6 +392,7 @@
         <p class="notice" id="notice"></p>
         <p class="err" id="err"></p>
         <button class="btn" id="togglebtn">Pause buffer</button>
+        <button class="btn" id="micbtn" title="Turn your microphone on or off in clips">Mic</button>
       </div>
       <div class="orbwrap">
         <button class="orb" id="savebtn" aria-label="Save replay">
@@ -666,6 +668,7 @@ function render() {
   $("togglebtn").textContent = state === "paused" ? "Resume buffer" : state === "error" ? "Try again" : state === "waiting" ? "Record now" : "Pause buffer";
 
   $("s-enc").textContent = st.encoder_label;
+  $("micbtn").textContent = s.mic ? "Mic on" : "Mic off"; $("micbtn").classList.toggle("on", !!s.mic);
   $("s-fps").textContent = st.fps + " fps";
   $("s-audio").textContent = st.audio ? [s.desktop_audio && "Game", s.mic && "Mic"].filter(Boolean).join(" + ") : "Off";
 
@@ -691,6 +694,7 @@ $("savebtn").addEventListener("click", async () => {
   $("savebtn").disabled = true;
   await api("/api/save");
 });
+$("micbtn").addEventListener("click", () => set({ mic: !S.settings.mic }));
 $("togglebtn").addEventListener("click", () => api("/api/toggle"));
 $("sitebtn").addEventListener("click", () => api("/api/open-url", { url: S.website }));
 $("updatebtn").addEventListener("click", () => S.update.ready ? api("/api/update/apply") : S.update.auto ? api("/api/update/check") : api("/api/open-url", { url: S.update.url }));
