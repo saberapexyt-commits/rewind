@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.2
+
+- **Choose which sound to record.** Settings → Audio → Sound to record lets you pick your headphones or speakers (or any other output) instead of following Windows. Leave it on "Follow the Windows default" and Rewind switches by itself when you plug in headphones. If the one you picked isn't connected, Rewind uses the Windows default and tells you.
+
 ## 1.6.1
 
 - **A crash or force close no longer loses a long recording.** A small helper watches over it: if Rewind stops unexpectedly, the helper saves what was recorded (marked "recovered") with your bookmarks. If you were only buffering and hadn't pressed the clip button, nothing is kept and nothing keeps running.

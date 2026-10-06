@@ -641,6 +641,10 @@
         <div class="lbl"><b>Game and desktop sound</b><small>Everything you hear through your speakers or headset.</small></div>
         <label class="switch"><input type="checkbox" id="opt-desktop"><span></span></label>
       </div>
+      <div class="set" id="outw">
+        <div class="lbl"><b>Sound to record</b><small>Pick your headphones or speakers, or follow whatever Windows is using.</small></div>
+        <select id="opt-outdev"></select>
+      </div>
       <div class="set">
         <div class="lbl"><b>Microphone</b><small>Mixes your voice into the replay.</small></div>
         <label class="switch"><input type="checkbox" id="opt-mic"><span></span></label>
@@ -828,7 +832,7 @@ function go(p) {
   $("main").scrollTop = 0;
   sel.clear(); if (typeof updateSelUi === "function") updateSelUi();
   if (p === "clips") loadClips();
-  if (p === "settings") api("/api/mics").then((m) => { if (S) { S.mics = m; renderSettings(); } });
+  if (p === "settings") { api("/api/mics").then((m) => { if (S) { S.mics = m; renderSettings(); } }); api("/api/outputs").then((o) => { if (S) { S.outputs = o; renderSettings(); } }); }
 }
 document.querySelectorAll(".nav").forEach((n) => n.addEventListener("click", () => n.dataset.editor ? Editor.open() : go(n.dataset.page)));
 document.querySelectorAll("[data-goto]").forEach((n) => n.addEventListener("click", () => go(n.dataset.goto)));
@@ -1553,6 +1557,12 @@ function renderSettings() {
   $("opt-tray").checked = s.close_to_tray; $("opt-tray").onchange = (e) => set({ close_to_tray: e.target.checked });
   $("opt-hidden").checked = s.start_hidden; $("opt-hidden").onchange = (e) => set({ start_hidden: e.target.checked });
   $("microw").style.display = s.mic ? "" : "none";
+  $("outw").style.display = s.desktop_audio ? "" : "none";
+  const od = $("opt-outdev");
+  od.innerHTML = `<option value="">Follow the Windows default</option>` +
+    (S.outputs || []).map((o) => `<option value="${esc(o.id)}" ${o.id === s.output_device ? "selected" : ""}>${esc(o.name)}${o.default ? " (current)" : ""}</option>`).join("") +
+    (s.output_device && !(S.outputs || []).some((o) => o.id === s.output_device) ? `<option value="${esc(s.output_device)}" selected>${esc(s.output_device)} (not connected)</option>` : "");
+  od.onchange = () => set({ output_device: od.value || null });
   const md = $("opt-micdev");
   md.innerHTML = `<option value="">Windows default</option>` +
     (S.mics || []).map((m) => `<option ${m.id === s.mic_device ? "selected" : ""}>${esc(m.name)}</option>`).join("");

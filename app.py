@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.1"
+VERSION = "1.6.2"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -54,7 +54,7 @@ def version_tuple(v):
 
 DEFAULTS = {
     "length": 30, "fps": 60, "quality": "balanced", "encoder": "auto", "monitor": 0,
-    "desktop_audio": True, "mic": True, "mic_device": None,
+    "desktop_audio": True, "mic": True, "mic_device": None, "output_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
     "hotkey_bookmark": None, "share_ok": False,
@@ -64,7 +64,7 @@ DEFAULTS = {
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
-RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture", "capture_input"}
+RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "output_device", "capture", "capture_input"}
 
 
 def log(msg):
@@ -138,6 +138,7 @@ class App:
         self.events = []  # toasts for the UI: saved / failed
         self.monitors = winbits.monitors()
         self.mics = []
+        self.outputs = []
         self.port = 0
         self.tray_hint_shown = False
         self.update = None  # {"version", "url", ...} when GitHub has a newer release
@@ -445,7 +446,7 @@ class App:
             "hotkey_ok": self.hotkey.ok, "hotkey_error": self.hotkey.error, "hotkey_label": h["label"],
             "hotkeys": {w: {"label": (self.settings.get(k) or {}).get("label", ""), "ok": self.hotkeys[w].ok,
                             "error": self.hotkeys[w].error, "mode": (self.settings.get(k) or {}).get("mode", "tap")} for w, k in HOTKEY_KEYS.items()},
-            "monitors": self.monitors, "mics": self.mics,
+            "monitors": self.monitors, "mics": self.mics, "outputs": self.outputs,
             "events": self.events[-5:],
             "clip_count": self.clip_count(),
             "native_window": self.window is not None,
@@ -1173,6 +1174,9 @@ class Handler(BaseHTTPRequestHandler):
                 APP.update_settings({"window_games": wg})
                 threading.Thread(target=APP.rec.restart, daemon=True).start()
                 return self._send(200, {"ok": True})
+            if path == "/api/outputs":
+                APP.outputs = engine.output_devices()
+                return self._send(200, APP.outputs)
             if path == "/api/mics":
                 APP.mics = engine.audio_devices()
                 return self._send(200, APP.mics)
@@ -1284,6 +1288,7 @@ def main():
                     APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
         threading.Thread(target=first_run_setup, daemon=True).start()
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
+    threading.Thread(target=lambda: setattr(APP, "outputs", engine.output_devices()), daemon=True).start()
     threading.Thread(target=APP.find_gpus, daemon=True).start()
     threading.Thread(target=APP.update_loop, daemon=True).start()
     def tidy_clips():

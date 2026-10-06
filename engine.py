@@ -526,6 +526,28 @@ def audio_devices():
         pa.terminate()
 
 
+def output_devices():
+    """Speakers and headphones the game sound can be taken from."""
+    if TEST:
+        return [{"id": "test-speakers", "name": "Test speakers"}]
+    try:
+        import pyaudiowpatch as pa_mod
+    except ImportError:
+        return []
+    pa = pa_mod.PyAudio()
+    try:
+        api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
+        default = pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
+        out = []
+        for i in range(api["deviceCount"]):
+            d = pa.get_device_info_by_host_api_device_index(api["index"], i)
+            if d["maxOutputChannels"] > 0 and not d.get("isLoopbackDevice") and all(o["id"] != d["name"] for o in out):
+                out.append({"id": d["name"], "name": d["name"], "default": d["name"] == default})
+        return out
+    finally:
+        pa.terminate()
+
+
 def is_virtual_mic(name):
     n = name.lower()
     return any(k in n for k in ("voicemeeter", "virtual", "stereo mix", "vb-audio", "cable output"))
@@ -537,9 +559,10 @@ class AudioPump(threading.Thread):
     Loopback capture goes quiet when nothing is playing, so without this pump
     the audio would drift out of sync with the video."""
 
-    def __init__(self, write, desktop, mic, mic_name, on_error):
+    def __init__(self, write, desktop, mic, mic_name, on_error, output_name=None):
         super().__init__(daemon=True)
         self.write, self.on_error = write, on_error
+        self.out_note = ""
         self.alive = True
         self.levels = deque(maxlen=300 * 4)  # one peak value per 0.25 s
         self.sources, self.pa, self.mic_error = [], None, ""
@@ -552,6 +575,15 @@ class AudioPump(threading.Thread):
         api = self.pa.get_host_api_info_by_type(pa_mod.paWASAPI)
         if desktop:
             spk = self.pa.get_device_info_by_index(api["defaultOutputDevice"])
+            if output_name:                       # a device picked in Settings instead of following Windows' default
+                for i in range(api["deviceCount"]):
+                    d = self.pa.get_device_info_by_host_api_device_index(api["index"], i)
+                    if d["maxOutputChannels"] > 0 and not d.get("isLoopbackDevice") and d["name"] == output_name:
+                        spk = d
+                        break
+                else:
+                    self.out_note = f"The sound device you picked ({output_name}) isn't connected, so Rewind is using the Windows default."
+                    output_name = None
             if not spk.get("isLoopbackDevice"):
                 for lb in self.pa.get_loopback_device_info_generator():
                     if spk["name"] in lb["name"]:
@@ -561,7 +593,8 @@ class AudioPump(threading.Thread):
             self.sources.append(self.desk)
             self.out_name = self.pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
             self.spare_pa = None
-            threading.Thread(target=self._follow_output, args=(pa_mod,), daemon=True).start()
+            if not output_name:                   # only follow Windows' default when no device was picked
+                threading.Thread(target=self._follow_output, args=(pa_mod,), daemon=True).start()
         self.mic_error = ""
         if mic:
           try:
@@ -1033,10 +1066,10 @@ class Recorder:
         if self.has_audio:
             try:
                 self.pump = AudioPump(self.proc.stdin.write, s["desktop_audio"], s["mic"], s.get("mic_device"),
-                                      on_error=self._set_error)
+                                      on_error=self._set_error, output_name=s.get("output_device"))
                 self.pump.start()
-                if self.pump.mic_error:
-                    self.notice = self.pump.mic_error
+                if self.pump.mic_error or self.pump.out_note:
+                    self.notice = "  ".join(x for x in (self.pump.mic_error, self.pump.out_note) if x)
             except Exception as e:
                 self.pump = None
                 self.audio_note = f"Couldn't open audio, so Rewind is recording video only: {e}"
