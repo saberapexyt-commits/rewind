@@ -7,6 +7,7 @@
 <meta name="description" content="Rewind keeps the last 30 seconds of your game. Press Alt + F8 and it's saved as a clip. Free for Windows.">
 <meta property="og:title" content="Rewind · Instant replay for your PC">
 <meta property="og:description" content="Press Alt + F8 and the last 30 seconds of your game become a clip.">
+<meta property="og:image" content="screenshot-home.jpg">
 <link rel="icon" href="favicon.png">
 <style>
   :root {
@@ -245,6 +246,11 @@
   .em-head { position: absolute; top: -8px; bottom: -4px; width: 2px; background: #3d8bff; } .em-head::before { content: ""; position: absolute; left: -4px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #3d8bff; }
   .em-row { display: flex; align-items: center; gap: 10px; padding: 18px 24px 0; font-size: 13.5px; color: #8e8e99; flex-wrap: wrap; } .em-row b { color: #f1f1f3; } .em-row .g { flex: 1; }
   .em-row .b { padding: 8px 14px; border-radius: 9px; background: #1b1b1f; color: #f1f1f3; font-weight: 650; } .em-row .b.p { background: #3d8bff; color: #fff; }
+
+  .win { overflow: hidden; background: #0d0d0f; } .win img { display: block; width: 100%; height: auto; }
+  .shotframe { margin: 0; border: 1px solid var(--line-2); border-radius: 16px; overflow: hidden; box-shadow: 0 30px 80px rgba(0,0,0,.35); background: #0d0d0f; }
+  .shotframe img { display: block; width: 100%; height: auto; }
+  .shotframe figcaption { padding: 12px 18px; color: var(--muted); font-size: 14px; background: var(--card); border-top: 1px solid var(--line); }
 </style>
 </head>
 <body>
@@ -285,29 +291,8 @@
       <p class="meta" id="meta">Version 1.0.0 · Windows 10 / 11 (64-bit)</p>
 
       <div class="stage">
-        <div class="win" role="img" aria-label="The Rewind app: a library of saved replays from Valorant, Fortnite, Roblox and Rocket League, with a Save replay button and the Alt F8 shortcut.">
-          <div class="win-bar"><b>Rewind</b><span class="spill"><i></i>Recording Valorant</span><span class="kchip"><kbd>Alt</kbd>+<kbd>F8</kbd><em>Clip 30s</em></span></div>
-          <div class="app">
-            <div class="side"><span class="on"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l7-5.5L17 9v7.5a1 1 0 0 1-1 1h-3.5v-5h-5v5H4a1 1 0 0 1-1-1z"/></svg></span><span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l3.7-2.2z" fill="currentColor"/></svg></span><span class="sp"></span><span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg></span></div>
-            <div class="main-pane">
-              <div class="tbar"><span class="b p">Save replay</span><span class="b on">Mic on</span><span class="b">Pause buffer</span><span class="st">NVIDIA NVENC · 60 fps · Game sound + Mic</span><span class="cnt">4 clips</span></div>
-              <h5>Today</h5>
-              <div class="thumbs">
-                <div class="mc"><div class="ms"><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt="Valorant gameplay"><span class="dur">0:30</span><span class="nw">New</span></div>
-                  <div class="mb"><b>Valorant</b><div class="mm">On device<i></i>45 MB<i></i>Today, 6:37 AM</div></div>
-                  <div class="ma"><span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5v11l9-5.5z"/></svg>Watch</span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.8 2h7.2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></svg></div></div>
-                <div class="mc"><div class="ms"><img src="game-fortnite.jpg" width="960" height="540" loading="lazy" alt="Fortnite gameplay"><span class="dur">0:30</span></div>
-                  <div class="mb"><b>Fortnite</b><div class="mm">On device<i></i>38 MB<i></i>Today, 6:37 AM</div></div>
-                  <div class="ma"><span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5v11l9-5.5z"/></svg>Watch</span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.8 2h7.2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></svg></div></div>
-                <div class="mc"><div class="ms"><img src="game-roblox.jpg" width="960" height="540" loading="lazy" alt="Roblox gameplay"><span class="dur">0:28</span></div>
-                  <div class="mb"><b>Roblox</b><div class="mm">On device<i></i>42 MB<i></i>Today, 6:38 AM</div></div>
-                  <div class="ma"><span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5v11l9-5.5z"/></svg>Watch</span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.8 2h7.2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></svg></div></div>
-                <div class="mc"><div class="ms"><img src="game-rocket.jpg" width="960" height="540" loading="lazy" alt="Rocket League gameplay"><span class="dur">0:30</span></div>
-                  <div class="mb"><b>Rocket League</b><div class="mm">On device<i></i>40 MB<i></i>Today, 6:36 AM</div></div>
-                  <div class="ma"><span><svg viewBox="0 0 20 20" fill="currentColor"><path d="M7 4.5v11l9-5.5z"/></svg>Watch</span><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"><path d="M2.5 5.5a1 1 0 0 1 1-1h4l1.8 2h7.2a1 1 0 0 1 1 1v7a1 1 0 0 1-1 1h-13a1 1 0 0 1-1-1z"/></svg></div></div>
-              </div>
-            </div>
-          </div>
+        <div class="win">
+          <img src="screenshot-home.jpg" width="2000" height="885" alt="The Rewind app: saved clips from Valorant, Fortnite, Roblox and Rocket League, with a Save replay button, a mic toggle and the Alt F8 clip shortcut.">
         </div>
       </div>
     </div>
@@ -354,6 +339,10 @@
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M15 17l2 2 4-4"/></svg></div><h3>Clip library</h3><p>Clips are grouped by day with their length. Tick several and delete them in one go.</p></div>
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg></div><h3>Updates itself</h3><p>A banner offers each new version with <b>Update now</b>, <b>Later</b> or <b>Skip</b>. Rewind downloads it and restarts itself.</p></div>
       </div>
+      <figure class="shotframe" style="margin-top:56px">
+        <img src="screenshot-settings.jpg" width="2000" height="856" loading="lazy" alt="Rewind settings: hotkeys for Clip, Start or stop long recording and Bookmark, each with Tap or Long press, then replay length and save sounds.">
+        <figcaption>Hotkeys for clipping, long recordings and bookmarks, each as a tap or a long press.</figcaption>
+      </figure>
     </div>
   </section>
 
@@ -362,17 +351,9 @@
       <div class="eyebrow">Clip editor</div>
       <h2>Trim and go vertical, right where you watch it.</h2>
       <p class="intro">Open any clip and cut it down to the good part. Save the cut as a copy, replace the full clip, or switch to a vertical format (Fill, Fit + blur or Vertical zoom) with a live preview.</p>
-      <div class="editor-mock" role="img" aria-label="The Rewind player with a video on top and a trim timeline with draggable handles below.">
-        <div class="em-video"><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt=""><div class="em-ctl"><span>&#9654;</span><span>0:12 / 0:30</span></div></div>
-        <div class="em-ruler"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:30</span></div>
-        <div class="em-strip">
-          <div class="em-tiles"><img src="game-valorant.jpg" alt=""><img src="game-fortnite.jpg" alt=""><img src="game-roblox.jpg" alt=""><img src="game-rocket.jpg" alt=""><img src="game-valorant.jpg" alt=""><img src="game-fortnite.jpg" alt=""></div>
-          <div class="em-dim" style="left:0;width:17%"></div><div class="em-dim" style="right:0;width:23%"></div>
-          <div class="em-sel" style="left:17%;right:23%"><i class="l"></i><i class="r"></i></div>
-          <div class="em-head" style="left:41%"></div>
-        </div>
-        <div class="em-row"><span>Keeping <b>0:05.1</b> to <b>0:23.0</b> &middot; 17.9 s of 30.0 s</span><span class="g"></span><span class="b">Save as copy</span><span class="b p">Replace original</span></div>
-      </div>
+      <figure class="shotframe">
+        <img src="screenshot-editor.jpg" width="2000" height="1154" loading="lazy" alt="The Rewind player: a clip with a Vertical zoom format selected, a live 9:16 preview beside the video, and a trim timeline with draggable handles.">
+      </figure>
     </div>
   </section>
 

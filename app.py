@@ -25,8 +25,10 @@ import winbits
 VERSION = "1.2.1"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
-UI_FILE = RES_DIR / "ui" / "index.html"
-DATA_DIR = Path(os.environ.get("APPDATA", Path.home() / ".config")) / "Rewind"
+UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
+# test runs keep their own settings and log, so they can never touch a real install's
+DATA_DIR = Path(os.environ.get("REWIND_DATA_DIR") or
+                Path(os.environ.get("APPDATA", Path.home() / ".config")) / ("Rewind-test" if engine.TEST else "Rewind"))
 SETTINGS_FILE = DATA_DIR / "settings.json"
 LOG_FILE = DATA_DIR / "rewind.log"
 UPDATE_DIR = DATA_DIR / "update"
