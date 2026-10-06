@@ -416,6 +416,21 @@
   .updprog i { display: block; height: 100%; width: 0; background: var(--accent2); transition: width .2s; }
   .updbtns { display: flex; gap: 8px; flex-shrink: 0; }
   .updbtns .btn { height: 32px; font-size: 13px; }
+
+  /* ===== vertical formats ===== */
+  .vrow { display: flex; height: min(52vh, 560px); flex: none; background: #000; }
+  .vrow .vstage { flex: 1; height: 100%; min-width: 0; }
+  .vpanel { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; background: #08080a; border-left: 1px solid #1c1c20; width: calc(min(52vh, 560px) * 0.5625 + 28px); flex: none; }
+  .vpanel[hidden] { display: none; }
+  .vpanel canvas { flex: 1; min-height: 0; aspect-ratio: 9 / 16; max-width: 100%; border-radius: 10px; background: #000; cursor: grab; touch-action: none; }
+  .vpanel canvas:active { cursor: grabbing; }
+  .vpl { color: var(--dim); font-size: 11.5px; }
+  .fmtrow { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 2px 0 12px; }
+  .fmtrow .fl { color: var(--muted); font-size: 13px; font-weight: 600; }
+  .fmtrow .seg button { padding: 6px 12px; }
+  .zoomctl { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); } .zoomctl input { width: 130px; accent-color: #fff; } .zoomctl b { color: var(--text); min-width: 34px; }
+  .fnote { color: var(--dim); font-size: 12.5px; }
+  @media (max-width: 860px) { .vpanel { width: 160px; } }
 </style>
 </head>
 <body class="paused">
@@ -630,6 +645,7 @@
       <button class="btn danger" id="delete">Delete</button>
       <button class="btn" id="closeplayer" aria-label="Close player">Close</button>
     </div>
+    <div class="vrow">
     <div class="vstage" id="vstage">
       <video id="video" playsinline></video>
       <div class="vbar">
@@ -644,7 +660,20 @@
         </div>
       </div>
     </div>
+    <div class="vpanel" id="vpanel" hidden>
+      <canvas id="vcanvas" width="540" height="960"></canvas>
+      <span class="vpl">Vertical preview &middot; drag to move</span>
+    </div>
+    </div>
     <div class="editor">
+      <div class="fmtrow">
+        <span class="fl">Format</span>
+        <div class="seg" id="fmtseg">
+          <button data-f="original" class="on">Original</button><button data-f="fill">Fill</button><button data-f="fit">Fit + blur</button><button data-f="zoom">Vertical zoom</button>
+        </div>
+        <label class="zoomctl" id="zoomctl" hidden>Zoom <input type="range" id="zoomrange" min="1.2" max="3" step="0.05" value="1.6"><b id="zoomval">1.6x</b></label>
+        <span class="fnote" id="fnote"></span>
+      </div>
       <div class="ruler" id="ruler"></div>
       <div class="strip" id="strip">
         <canvas id="filmstrip"></canvas>
@@ -928,7 +957,7 @@ function niceTitle(t) {
 
 /* ---------- player + trim editor */
 let current = null;
-const V = { dur: 0, ts: 0, te: 0, drag: null, strip: 0 };
+const V = { dur: 0, ts: 0, te: 0, drag: null, strip: 0, fmt: "original", fx: 0.5, fy: 0.5, z: 1.6 };
 const vid = $("video");
 const ICON = {
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>',
@@ -1015,11 +1044,16 @@ function updateSel() {
   $("sel").style.left = l + "px"; $("sel").style.width = Math.max(4, r - l) + "px";
   $("diml").style.width = l + "px"; $("dimr").style.width = (V.strip - r) + "px";
 }
+const FMT_NAMES = { fill: "Fill", fit: "Fit + blur", zoom: "Vertical zoom" };
 function updateTrimUi() {
-  const t = trimmed();
+  const t = trimmed(), vf = V.fmt !== "original";
   $("trimreset").hidden = !t;
-  $("trimcopy").disabled = !t; $("trimreplace").disabled = !t;
-  $("tinfo").innerHTML = !V.dur ? "Loading…" : t
+  $("trimcopy").disabled = !(t || vf); $("trimreplace").disabled = !t || vf;
+  $("trimcopy").textContent = vf ? "Save vertical copy" : "Save as copy";
+  $("trimreplace").hidden = vf;
+  $("tinfo").innerHTML = !V.dur ? "Loading…" : vf
+    ? `Exporting <b>${FMT_NAMES[V.fmt]}</b> 9:16 (1080 x 1920) · ${(V.te - V.ts).toFixed(1)} s`
+    : t
     ? `Keeping <b>${tfmt(V.ts)}</b> to <b>${tfmt(V.te)}</b> · ${(V.te - V.ts).toFixed(1)} s of ${V.dur.toFixed(1)} s`
     : "Drag the white handles to trim this clip.";
 }
@@ -1072,11 +1106,12 @@ addEventListener("pointerup", () => { V.drag = null; });
 $("trimreset").onclick = () => { V.ts = 0; V.te = V.dur; updateSel(); updateTrimUi(); };
 
 async function doTrim(mode) {
-  if (!trimmed()) return;
+  if (!trimmed() && V.fmt === "original") return;
   const btns = [$("trimcopy"), $("trimreplace"), $("trimreset")];
   btns.forEach((b) => b.disabled = true);
   $("tinfo").textContent = mode === "copy" ? "Saving a trimmed copy…" : "Replacing the original…";
-  const name = current, args = { name, start: V.ts, end: V.te, mode };
+  const name = current, args = { name, start: V.ts, end: V.te, mode, format: V.fmt === "original" ? "" : V.fmt, fx: V.fx, fy: V.fy, zoom: V.fmt === "zoom" ? V.z : 1 };
+  if (V.fmt !== "original") $("tinfo").textContent = "Rendering the vertical clip…";
   if (mode === "replace") { vid.pause(); vid.removeAttribute("src"); vid.load(); V.filmToken++; }
   let r;
   try { r = await api("/api/clips/trim", args); } catch (e) { r = { ok: false, error: "Rewind didn't respond." }; }
@@ -1088,7 +1123,7 @@ async function doTrim(mode) {
   }
   await loadClips();
   if (mode === "replace") { openPlayer(name, true); toastNote("Clip trimmed", "The original now holds only the part you kept."); }
-  else { toastNote("Saved a trimmed copy", r.name.split("/").pop().replace(/\.mp4$/, ""), () => openPlayer(r.name)); updateTrimUi(); }
+  else { toastNote(V.fmt !== "original" ? "Saved a vertical copy" : "Saved a trimmed copy", r.name.split("/").pop().replace(/\.mp4$/, ""), () => openPlayer(r.name)); updateTrimUi(); }
 }
 $("trimcopy").onclick = () => doTrim("copy");
 $("trimreplace").onclick = () => {
@@ -1108,6 +1143,49 @@ function toastNote(title, sub, onWatch) {
   $("toasts").appendChild(t);
   setTimeout(() => t.remove(), 6000);
 }
+
+
+/* vertical formats: live preview + export settings */
+const pc = $("vcanvas"), pg = pc.getContext("2d");
+function setFormat(f) {
+  V.fmt = f;
+  document.querySelectorAll("#fmtseg button").forEach((b) => b.classList.toggle("on", b.dataset.f === f));
+  $("vpanel").hidden = f === "original";
+  $("zoomctl").hidden = f !== "zoom";
+  $("fnote").textContent = { fill: "Crops to the full height. Drag the preview sideways to choose the part.", fit: "Whole game in the middle, blurred copy behind it.", zoom: "Zoom in and drag the preview to choose the spot.", original: "" }[f];
+  updateTrimUi();
+}
+document.querySelectorAll("#fmtseg button").forEach((b) => b.onclick = () => setFormat(b.dataset.f));
+$("zoomrange").oninput = (e) => { V.z = Number(e.target.value); $("zoomval").textContent = V.z.toFixed(1) + "x"; };
+function drawPreview() {
+  if ($("modal").classList.contains("on")) requestAnimationFrame(drawPreview); else return;
+  if (V.fmt === "original" || !vid.videoWidth) return;
+  const W = vid.videoWidth, H = vid.videoHeight, cw = pc.width, ch = pc.height;
+  pg.fillStyle = "#000"; pg.fillRect(0, 0, cw, ch);
+  if (V.fmt === "fit") {
+    const s = Math.max(cw / W, ch / H);
+    pg.save(); pg.filter = "blur(26px) brightness(.85)";
+    pg.drawImage(vid, (cw - W * s) / 2, (ch - H * s) / 2, W * s, H * s); pg.restore();
+    const f = cw / W; pg.drawImage(vid, 0, (ch - H * f) / 2, cw, H * f);
+  } else {
+    const z = V.fmt === "zoom" ? V.z : 1, sw = (H * 9) / 16 / z, sh = H / z;
+    pg.drawImage(vid, (W - sw) * V.fx, (H - sh) * (V.fmt === "zoom" ? V.fy : 0), sw, sh, 0, 0, cw, ch);
+  }
+}
+requestAnimationFrame(drawPreview);
+const _open = openPlayer;
+openPlayer = function (name, bust) { _open(name, bust); setFormat("original"); requestAnimationFrame(drawPreview); };
+let pdrag = null;
+pc.addEventListener("pointerdown", (e) => { if (V.fmt === "fit") return; pdrag = { x: e.clientX, y: e.clientY, fx: V.fx, fy: V.fy }; pc.setPointerCapture(e.pointerId); });
+pc.addEventListener("pointermove", (e) => {
+  if (!pdrag || !vid.videoWidth) return;
+  const r = pc.getBoundingClientRect(), W = vid.videoWidth, H = vid.videoHeight, z = V.fmt === "zoom" ? V.z : 1;
+  const scale = r.height / (H / z);                       // screen px per source px
+  const rangeX = W * scale - r.width, rangeY = H * scale - r.height;
+  if (rangeX > 0) V.fx = Math.min(1, Math.max(0, pdrag.fx - (e.clientX - pdrag.x) / rangeX));
+  if (V.fmt === "zoom" && rangeY > 0) V.fy = Math.min(1, Math.max(0, pdrag.fy - (e.clientY - pdrag.y) / rangeY));
+});
+pc.addEventListener("pointerup", () => { pdrag = null; });
 
 /* header actions */
 $("closeplayer").onclick = closePlayer;
@@ -1143,7 +1221,7 @@ $("delete").onclick = () => {
 };
 document.addEventListener("keydown", (e) => {
   if (!$("modal").classList.contains("on") || (typeof listening !== "undefined" && listening)) return;
-  if (e.target.tagName === "INPUT" && e.target.type === "text") return;
+  if (e.target.tagName === "INPUT" && (e.target.type === "text" || e.target.type === "range")) return;
   if (e.key === "Escape") closePlayer();
   else if (e.key === "ArrowLeft") { e.preventDefault(); go2(-1); }
   else if (e.key === "ArrowRight") { e.preventDefault(); go2(1); }

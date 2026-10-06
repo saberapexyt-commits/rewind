@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.8"
+VERSION = "1.0.9"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -329,22 +329,43 @@ class App:
                         "duration": self.clip_duration(p, st)})
         return out
 
+    @staticmethod
+    def vertical_graph(fmt, fx, fy, zoom):
+        """ffmpeg filters that turn a landscape clip into 1080x1920. Returns (kind, graph)."""
+        fx = min(1.0, max(0.0, float(fx)))
+        fy = min(1.0, max(0.0, float(fy)))
+        z = min(4.0, max(1.0, float(zoom)))
+        if fmt == "fill":
+            return "vf", f"crop=w='ih*9/16':h=ih:x='(iw-ow)*{fx:.4f}':y=0,scale=1080:1920:flags=lanczos,format=yuv420p"
+        if fmt == "zoom":
+            return "vf", (f"crop=w='ih*9/16/{z:.3f}':h='ih/{z:.3f}':x='(iw-ow)*{fx:.4f}':y='(ih-oh)*{fy:.4f}',"
+                          "scale=1080:1920:flags=lanczos,format=yuv420p")
+        return "fc", ("split[a][b];[a]scale=270:480:force_original_aspect_ratio=increase,crop=270:480,gblur=sigma=10,"
+                      "scale=1080:1920[bg];[b]scale=1080:-2[fg];[bg][fg]overlay=(W-w)/2:(H-h)/2,format=yuv420p[v]")
+
     def trim_clip(self, b):
         """Cut a clip to [start, end]. mode "copy" saves a new clip next to it, "replace" overwrites the original."""
         src = self.clip_path(b["name"])
+        fmt = b.get("format") if b.get("format") in ("fill", "fit", "zoom") else ""
         start, end = max(0.0, float(b["start"])), float(b["end"])
         total = engine.duration_of(src)
         end = min(end, total) if total else end
         if end - start < 0.5:
             return {"ok": False, "error": "Pick at least half a second to keep."}
-        if start < 0.05 and total and end > total - 0.05:
+        if not fmt and start < 0.05 and total and end > total - 0.05:
             return {"ok": False, "error": "That's the whole clip. Drag the handles to cut it first."}
         tmp = src.with_name(f"trim-{secrets.token_hex(4)}.part")
         s = self.settings
 
         def attempt(enc):
             cmd = [engine.FFMPEG, "-hide_banner", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(src),
-                   "-t", f"{end - start:.3f}", "-map", "0:v:0", "-map", "0:a?"]
+                   "-t", f"{end - start:.3f}"]
+            if fmt:
+                kind, graph = self.vertical_graph(fmt, b.get("fx", .5), b.get("fy", .5), b.get("zoom", 1.6))
+                cmd += ["-filter_complex", graph, "-map", "[v]"] if kind == "fc" else ["-vf", graph, "-map", "0:v:0"]
+                cmd += ["-map", "0:a?"]
+            else:
+                cmd += ["-map", "0:v:0", "-map", "0:a?"]
             cmd += engine.video_args(enc, s.get("quality", "balanced"), int(s.get("fps", 60)))
             cmd += ["-c:a", "copy", "-movflags", "+faststart", "-f", "mp4", str(tmp)]
             return engine.run(cmd, timeout=300)
@@ -356,7 +377,7 @@ class App:
             if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 1000:
                 log(f"trim failed: {r.stderr[-300:]}")
                 return {"ok": False, "error": "Couldn't cut that clip. See rewind.log for details."}
-            if b.get("mode") == "replace":
+            if b.get("mode") == "replace" and not fmt:
                 st = src.stat()
                 for i in range(10):  # the player may still be letting go of the file
                     try:
@@ -372,7 +393,7 @@ class App:
                     t.unlink()
                 dest = src
             else:
-                base = src.stem + " (trimmed)"
+                base = src.stem + (" (vertical)" if fmt else " (trimmed)")
                 dest, n = src.with_name(base + ".mp4"), 2
                 while dest.exists():
                     dest, n = src.with_name(f"{base} {n}.mp4"), n + 1

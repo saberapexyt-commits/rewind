@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.9
+
+- Vertical clips: open any clip and pick a format (Fill, Fit + blur or Vertical zoom) to see a live 9:16 preview and save a 1080 x 1920 copy. Drag the preview to choose the part of the picture, and trim at the same time.
+
 ## 1.0.8
 
 - Saving a replay is much faster, even for 2 and 5 minute clips. The clip is written in a single pass and the sound plays the moment you press the key.
