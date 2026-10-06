@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.6
+
+- New clips show up in the library right away, without switching pages.
+- Select several clips (tick the box on a clip, or Ctrl+click) and delete them all at once.
+
 ## 1.0.5
 
 - Fixed the player: the video no longer spills over the timeline.

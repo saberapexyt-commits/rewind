@@ -393,6 +393,20 @@
   .vhint { margin: 0; padding: 4px 18px 14px; color: var(--dim); font-size: 12.5px; text-align: center; }
   .vhint kbd { padding: 0 6px; font-size: 11px; }
   @media (max-width: 860px) { .modal { grid-template-columns: minmax(0, 1fr); } .navarrow { display: none; } .vmeta { display: none; } }
+
+  /* ===== selecting clips ===== */
+  .chk { position: absolute; left: 8px; top: 8px; width: 24px; height: 24px; border-radius: 7px; border: 2px solid rgba(255,255,255,.85); background: rgba(0,0,0,.45);
+    color: transparent; display: grid; place-items: center; padding: 0; opacity: 0; transition: opacity .12s; z-index: 2; }
+  .chk svg { width: 15px; height: 15px; }
+  .clip:hover .chk, .clip:focus-within .chk, body.selecting .chk { opacity: 1; }
+  .clip.picked .chk { background: var(--accent); border-color: var(--accent); color: #fff; opacity: 1; }
+  .clip.picked { background: #172033; box-shadow: inset 0 0 0 2px var(--accent); }
+  .clip.picked .shot img { filter: brightness(.7); }
+  .clip .shot .new { left: 40px; }
+  .selbar { position: fixed; left: calc(50% + 112px); bottom: 42px; transform: translateX(-50%); z-index: 8; display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px 10px 18px; border-radius: 14px; background: #1a1a1f; border: 1px solid #2c2c33; box-shadow: 0 14px 40px rgba(0,0,0,.6); }
+  .selbar span { font-weight: 700; margin-right: 8px; white-space: nowrap; }
+  .selbar .btn.danger { background: #3a1a20; color: #ff7b8c; } .selbar .btn.danger.armed { background: #e0364f; color: #fff; }
 </style>
 </head>
 <body class="paused">
@@ -637,6 +651,12 @@
   </div>
   <button class="navarrow" id="nextclip" aria-label="Next clip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
 </div>
+<div class="selbar" id="selbar" hidden>
+  <span id="selcount">0 selected</span>
+  <button class="btn" id="selall">Select all</button>
+  <button class="btn danger" id="seldel">Delete</button>
+  <button class="btn" id="selcancel">Cancel</button>
+</div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <script>
@@ -646,6 +666,7 @@ let S = null;            // last /api/state
 let clips = [];
 let seenEvents = new Set();
 let firstState = true;
+let lastLibKey = null;
 let levelsStamp = 0;
 const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
@@ -677,6 +698,7 @@ function go(p) {
   document.querySelectorAll(".nav").forEach((n) => n.classList.toggle("active", n.dataset.page === p));
   document.querySelectorAll(".page").forEach((n) => n.classList.toggle("on", n.id === "page-" + p));
   $("main").scrollTop = 0;
+  sel.clear(); if (typeof updateSelUi === "function") updateSelUi();
   if (p === "clips") loadClips();
   if (p === "settings") api("/api/mics").then((m) => { if (S) { S.mics = m; renderSettings(); } });
 }
@@ -748,6 +770,8 @@ function render() {
     if (!firstState) toast(ev);
   }
   if (firstState) { firstState = false; loadClips(); }
+  const libKey = S.clip_count + "|" + (st.last_saved || "");
+  if (libKey !== lastLibKey) { if (lastLibKey !== null) loadClips(); lastLibKey = libKey; }
   const key = JSON.stringify([s, st.available, st.encoder, S.monitors, S.mics, S.hotkey_ok, S.hotkey_error, S.hotkey_label,
     st.window_capture, g && [g.name, g.focused, g.reason], S.recent_games.map((r) => r.exe)]);
   if (key !== settingsKey) { settingsKey = key; renderSettings(); }
@@ -793,8 +817,9 @@ async function loadClips() {
   $("filters").querySelectorAll("button").forEach((b) => b.onclick = () => { filter = b.dataset.f; loadClips(); });
   const shown = filter ? clips.filter((c) => gameOf(c) === filter) : clips;
   const card = (c, i) => `
-    <div class="clip" role="button" tabindex="0" data-name="${esc(c.name)}" data-file="${esc(c.title)}">
+    <div class="clip${sel.has(c.name) ? " picked" : ""}" role="button" tabindex="0" data-name="${esc(c.name)}" data-file="${esc(c.title)}">
       <div class="shot"><img loading="lazy" alt="" src="/thumb/${encodeURIComponent(c.name)}">
+        <button class="chk" data-chk aria-label="Select clip"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 10.5l3.5 3.5 7.5-8"/></svg></button>
         ${c.duration ? `<span class="dur">${clock(c.duration)}</span>` : ""}
         ${S && S.status.last_saved === c.name && i === 0 ? '<span class="new">New</span>' : ""}</div>
       <div class="cbody">
@@ -824,12 +849,62 @@ async function loadClips() {
   $("recent").innerHTML = clips.length ? grouped(clips.slice(0, 12)) : empty;
   $("allclips").innerHTML = clips.length ? grouped(shown) : empty;
   $("clipsub").textContent = clips.length ? `${clips.length} replay${clips.length === 1 ? "" : "s"}, newest first` : "";
+  for (const n of [...sel]) if (!clips.some((c) => c.name === n)) sel.delete(n);
   document.querySelectorAll(".clip").forEach((el) => {
-    el.addEventListener("click", () => openPlayer(el.dataset.name));
-    el.addEventListener("keydown", (e) => { if (e.key === "Enter") openPlayer(el.dataset.name); });
+    el.addEventListener("click", (e) => { if (sel.size || e.ctrlKey || e.metaKey) toggleSel(el.dataset.name); else openPlayer(el.dataset.name); });
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter") openPlayer(el.dataset.name); if (e.key === " " && e.target === el) { e.preventDefault(); toggleSel(el.dataset.name); } });
+    el.querySelector("[data-chk]").addEventListener("click", (e) => { e.stopPropagation(); toggleSel(el.dataset.name); });
     el.querySelector("[data-reveal]").addEventListener("click", (e) => { e.stopPropagation(); api("/api/clips/reveal", { name: el.dataset.name }); });
   });
+  updateSelUi();
 }
+
+/* ---------- selecting several clips */
+const sel = new Set();
+function visibleNames() {
+  const page = document.querySelector(".page.on");
+  return [...(page ? page.querySelectorAll(".clip") : [])].map((el) => el.dataset.name);
+}
+function toggleSel(name) { sel.has(name) ? sel.delete(name) : sel.add(name); updateSelUi(); }
+function updateSelUi() {
+  document.body.classList.toggle("selecting", sel.size > 0);
+  document.querySelectorAll(".clip").forEach((el) => el.classList.toggle("picked", sel.has(el.dataset.name)));
+  $("selbar").hidden = sel.size === 0;
+  $("selcount").textContent = `${sel.size} selected`;
+  const all = visibleNames();
+  $("selall").textContent = all.length && all.every((n) => sel.has(n)) ? "Select none" : "Select all";
+  if (!sel.size) resetBulkDelete();
+  else if ($("seldel").dataset.armed !== "1") $("seldel").textContent = `Delete ${sel.size}`;
+}
+$("selall").onclick = () => {
+  const all = visibleNames();
+  if (all.every((n) => sel.has(n))) all.forEach((n) => sel.delete(n)); else all.forEach((n) => sel.add(n));
+  updateSelUi();
+};
+$("selcancel").onclick = () => { sel.clear(); updateSelUi(); };
+let bulkTimer = null;
+function resetBulkDelete() { clearTimeout(bulkTimer); $("seldel").dataset.armed = ""; $("seldel").classList.remove("armed"); }
+$("seldel").onclick = async () => {
+  if ($("seldel").dataset.armed !== "1") {
+    $("seldel").dataset.armed = "1"; $("seldel").classList.add("armed");
+    $("seldel").textContent = `Move ${sel.size} to Recycle Bin? Click again`;
+    bulkTimer = setTimeout(() => { resetBulkDelete(); updateSelUi(); }, 3500);
+    return;
+  }
+  const names = [...sel];
+  resetBulkDelete(); $("seldel").disabled = true;
+  for (const name of names) { try { await api("/api/clips/delete", { name }); } catch (e) {} }
+  sel.clear(); $("seldel").disabled = false;
+  await loadClips();
+  toastNote(`Deleted ${names.length} clip${names.length === 1 ? "" : "s"}`, "Moved to the Recycle Bin.");
+};
+document.addEventListener("keydown", (e) => {
+  if ($("modal").classList.contains("on") || (typeof listening !== "undefined" && listening)) return;
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT") return;
+  if (e.key === "Escape" && sel.size) { sel.clear(); updateSelUi(); }
+  else if (e.key === "Delete" && sel.size) $("seldel").click();
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "a" && document.querySelector(".page.on .clip")) { e.preventDefault(); visibleNames().forEach((n) => sel.add(n)); updateSelUi(); }
+});
 
 // "Roblox 2026-10-06 21-14-03" -> "Roblox" (the date is already shown under it)
 function niceTitle(t) {
