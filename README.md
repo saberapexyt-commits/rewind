@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.7
+
+- **New look for the "Clip captured" pop-up.** A slim capsule with a rewind icon inside a ring that counts down, the title, and the game. Cleaner and smaller than before.
+
 ## 1.5.6
 
 - **"Clip captured" pop-up.** When a clip is saved, a card slides in at the top left of the screen you're recording, with the game name and how much was saved, then fades away. It doesn't take focus, you can click straight through it, and it is kept out of your recordings. Turn it off or preview it in Settings.

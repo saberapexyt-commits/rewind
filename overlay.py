@@ -85,88 +85,83 @@ def _fit(draw, text, font, width):
     return text.rstrip() + "…"
 
 
-def render_card(title, sub, badge, scale=1.0):
-    """The card as an RGBA image (with room around it for the glow) and where the progress bar goes."""
-    ss = 2
+def _gradient(size, c1, c2):
+    gp = np.zeros((size, size, 4), np.uint8)
+    t = (np.add.outer(np.arange(size), np.arange(size)) / (2.0 * size))[..., None]
+    gp[..., :3] = (np.array(c1) * (1 - t) + np.array(c2) * t).astype(np.uint8)
+    gp[..., 3] = 255
+    return Image.fromarray(gp, "RGBA")
+
+
+def render_card(title, sub, badge="", scale=1.0):
+    """A slim capsule: a rewind icon inside a ring that counts down, the title, and the game. Returns the image
+    and where the ring goes (cx, cy, radius) for the animation."""
+    ss = 3
     k = scale * ss
-    pad, cw, ch = 26, 380, 88
+    pad = 22                                  # room around the capsule for the shadow
+    ch = 66
+    f_title = _font(["segoeuib.ttf", "seguisb.ttf", "arialbd.ttf"], int(18 * k))
+    f_sub = _font(["segoeui.ttf", "arial.ttf"], int(13 * k))
+    probe = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
+    tw = max(probe.textlength(title, font=f_title), min(probe.textlength(sub, font=f_sub), 250 * k))
+    icon = 44
+    cw = int(16 + icon + 14 + tw / k + 26)
     W, H = int((cw + pad * 2) * k), int((ch + pad * 2) * k)
     X0, Y0, X1, Y1 = int(pad * k), int(pad * k), int((pad + cw) * k), int((pad + ch) * k)
-    rad = int(20 * k)
+    rad = (Y1 - Y0) // 2
 
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow)
-    gd.rounded_rectangle((X0, Y0 + int(4 * k), X1, Y1 + int(4 * k)), rad, fill=(0, 0, 0, 150))
-    glow = glow.filter(ImageFilter.GaussianBlur(14 * k))
-    tint = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(tint).rounded_rectangle((X0, Y0, X1, Y1), rad, fill=ACCENT_A + (70,))
-    tint = tint.filter(ImageFilter.GaussianBlur(18 * k))
-    img = Image.alpha_composite(img, glow)
-    img = Image.alpha_composite(img, tint)
-
+    sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(sh).rounded_rectangle((X0, Y0 + int(6 * k), X1, Y1 + int(6 * k)), rad, fill=(0, 0, 0, 120))
+    img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(11 * k)))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((X0, Y0, X1, Y1), rad, fill=(17, 20, 28, 242), outline=(255, 255, 255, 34), width=max(1, int(k)))
-    # a faint top highlight so the card feels like glass
-    ga = np.zeros((H, W, 4), np.uint8)
-    ga[..., :3] = 255
-    span = max(1, int(44 * k))
-    col = np.clip(1 - (np.arange(H) - Y0) / span, 0, 1) * 26
-    ga[..., 3] = col[:, None].astype(np.uint8)
-    hl = Image.fromarray(ga, "RGBA")
-    mask = Image.new("L", (W, H), 0)
-    ImageDraw.Draw(mask).rounded_rectangle((X0, Y0, X1, Y1), rad, fill=255)
-    img = Image.composite(Image.alpha_composite(img, hl), img, mask)
+    d.rounded_rectangle((X0, Y0, X1, Y1), rad, fill=(13, 15, 21, 244))
+    # lit edge: a brighter rim that fades out toward the bottom
+    rim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(rim).rounded_rectangle((X0, Y0, X1, Y1), rad, outline=(255, 255, 255, 255), width=max(1, int(1.4 * k)))
+    ra = np.asarray(rim).copy()
+    fade = np.clip(0.9 - (np.arange(H) - Y0) / max(1, (Y1 - Y0)) * 0.75, 0.1, 1)
+    ra[..., 3] = (ra[..., 3] * fade[:, None] * 0.22).astype(np.uint8)
+    img = Image.alpha_composite(img, Image.fromarray(ra, "RGBA"))
     d = ImageDraw.Draw(img)
 
-    # icon: a gradient disc with a check mark
-    dia = int(46 * k)
-    ix, iy = X0 + int(20 * k), Y0 + (Y1 - Y0 - dia) // 2 - int(2 * k)
-    grad = Image.new("RGBA", (dia, dia))
-    gp = np.zeros((dia, dia, 4), np.uint8)
-    t = (np.add.outer(np.arange(dia), np.arange(dia)) / (2.0 * dia))[..., None]
-    gp[..., :3] = (np.array(ACCENT_A) * (1 - t) + np.array(ACCENT_B) * t).astype(np.uint8)
-    gp[..., 3] = 255
-    grad = Image.fromarray(gp, "RGBA")
+    # icon disc with a rewind symbol
+    dia = int(icon * k)
+    ix, iy = X0 + int(16 * k), Y0 + (Y1 - Y0 - dia) // 2
+    disc = _gradient(dia, ACCENT_A, ACCENT_B)
     dm = Image.new("L", (dia, dia), 0)
     ImageDraw.Draw(dm).ellipse((0, 0, dia - 1, dia - 1), fill=255)
-    img.paste(grad, (ix, iy), dm)
-    cxm, cym = ix + dia / 2, iy + dia / 2
-    pts = [(cxm - 0.22 * dia, cym + 0.01 * dia), (cxm - 0.07 * dia, cym + 0.16 * dia), (cxm + 0.24 * dia, cym - 0.15 * dia)]
-    lw = int(0.11 * dia)
-    d.line(pts, fill=(255, 255, 255, 255), width=lw, joint="curve")
-    for px, py in (pts[0], pts[2]):
-        d.ellipse((px - lw / 2, py - lw / 2, px + lw / 2, py + lw / 2), fill=(255, 255, 255, 255))
+    img.paste(disc, (ix, iy), dm)
+    cx, cy = ix + dia / 2, iy + dia / 2
+    u = dia / 44
+    for dx in (-5.5, 6.5):                   # two triangles pointing left
+        d.polygon([(cx + (dx + 6) * u, cy - 8.5 * u), (cx + (dx + 6) * u, cy + 8.5 * u), (cx + (dx - 6.5) * u, cy)], fill=(255, 255, 255, 255))
+        d.rounded_rectangle((cx + (dx - 7.5) * u, cy - 8.5 * u, cx + (dx - 5.2) * u, cy + 8.5 * u), 1, fill=(255, 255, 255, 255)) if False else None
 
-    tx = ix + dia + int(16 * k)
-    f_title = _font(["segoeuib.ttf", "seguisb.ttf", "arialbd.ttf"], int(21 * k))
-    f_sub = _font(["segoeui.ttf", "arial.ttf"], int(14 * k))
-    f_badge = _font(["segoeuib.ttf", "seguisb.ttf", "arialbd.ttf"], int(11 * k))
-    bw = d.textlength(badge, font=f_badge) + 18 * k
-    bx1, bx0 = X1 - int(16 * k), X1 - int(16 * k) - bw
-    avail = bx0 - tx - 8 * k
-    d.text((tx, Y0 + int(17 * k)), _fit(d, title, f_title, avail if avail > 60 * k else 200 * k), font=f_title, fill=(255, 255, 255, 255))
-    d.text((tx, Y0 + int(46 * k)), _fit(d, sub, f_sub, X1 - tx - 18 * k), font=f_sub, fill=(150, 158, 176, 255))
-    if badge:
-        by0, by1 = Y0 + int(20 * k), Y0 + int(40 * k)
-        d.rounded_rectangle((bx0, by0, bx1, by1), int(10 * k), fill=ACCENT_A + (46,), outline=ACCENT_A + (110,), width=max(1, int(k)))
-        d.text(((bx0 + bx1) / 2, (by0 + by1) / 2 + k * 0.5), badge, font=f_badge, fill=(150, 195, 255, 255), anchor="mm")
+    tx = ix + dia + int(14 * k)
+    d.text((tx, Y0 + int(11 * k)), title, font=f_title, fill=(255, 255, 255, 255))
+    d.text((tx, Y0 + int(36 * k)), _fit(d, sub, f_sub, X1 - tx - 20 * k), font=f_sub, fill=(142, 150, 170, 255))
 
     img = img.resize((W // ss, H // ss), Image.LANCZOS)
     s = scale
-    bar = (int((pad + 20) * s), int((pad + ch - 11) * s), int((pad + cw - 20) * s), int((pad + ch - 8) * s))
-    return img, bar
+    ring = ((ix + dia / 2) / ss, (iy + dia / 2) / ss, dia / ss / 2 + 3.2 * s)
+    return img, ring
 
 
-def _frame(base, bar, frac):
-    """One animation frame: the card plus the shrinking progress bar."""
+def _frame(base, ring, frac):
+    """One animation frame: the card plus the ring around the icon, which empties as the card runs out."""
     im = base.copy()
-    d = ImageDraw.Draw(im)
-    x0, y0, x1, y1 = bar
-    d.rounded_rectangle((x0, y0, x1, y1), (y1 - y0) // 2, fill=(255, 255, 255, 20))
-    wid = int((x1 - x0) * max(0.0, min(1.0, frac)))
-    if wid > 3:
-        d.rounded_rectangle((x0, y0, x0 + wid, y1), (y1 - y0) // 2, fill=ACCENT_A + (255,))
+    cx, cy, r = ring
+    q = 4
+    n = int(2 * (r + 4)) * q
+    patch = Image.new("RGBA", (n, n), (0, 0, 0, 0))
+    pd = ImageDraw.Draw(patch)
+    c, rr, wd = n / 2, r * q, max(2, int(2.2 * q))
+    pd.ellipse((c - rr, c - rr, c + rr, c + rr), outline=(255, 255, 255, 30), width=wd)
+    if frac > 0.004:
+        pd.arc((c - rr, c - rr, c + rr, c + rr), -90, -90 + 360 * max(0.0, min(1.0, frac)), fill=ACCENT_A + (255,), width=wd)
+    patch = patch.resize((n // q, n // q), Image.LANCZOS)
+    im.alpha_composite(patch, (int(cx - n / q / 2), int(cy - n / q / 2)))
     return im
 
 
