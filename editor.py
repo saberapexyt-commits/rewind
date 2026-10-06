@@ -85,43 +85,111 @@ def clamp(v, lo, hi, default):
     return max(lo, min(hi, v))
 
 
-def fit_chain(label_in, label_out, mode, W, H, tag):
-    """Filters that fit one clip onto the W x H canvas. Returns a list of graph pieces."""
-    if mode == "fill":
-        return [f"[{label_in}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[{label_out}]"]
-    if mode == "blur":
-        return [
-            f"[{label_in}]split[s{tag}a][s{tag}b]",
-            f"[s{tag}a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},gblur=sigma=8,scale={W}:{H}[bg{tag}]",
-            f"[s{tag}b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg{tag}]",
-            f"[bg{tag}][fg{tag}]overlay=(W-w)/2:(H-h)/2[{label_out}]",
-        ]
-    return [f"[{label_in}]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black[{label_out}]"]
-
-
 TRANSITIONS = {"fade", "fadeblack", "dissolve", "wipeleft", "wiperight", "wipeup", "wipedown", "slideleft", "slideright",
                "circleopen", "circleclose", "zoomin"}
 
-# effect id -> ffmpeg filter (applied after the clip is fitted to the canvas)
-EFFECTS = {
+# Looks ("filters"): colour treatments that run over a stretch of the timeline, with an intensity
+FILTERS = {
     "bw": "hue=s=0",
+    "noir": "hue=s=0,eq=contrast=1.45:brightness=-0.03",
     "sepia": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
     "vivid": "eq=saturation=1.55:contrast=1.1",
+    "pop": "eq=contrast=1.2:saturation=1.5",
     "cool": "colorchannelmixer=rr=0.92:bb=1.12",
     "warm": "colorchannelmixer=rr=1.12:bb=0.88",
     "fade": "eq=contrast=0.86:brightness=0.05:saturation=0.75",
-    "blur": "gblur=sigma=6",
-    "sharpen": "unsharp=5:5:1.4",
-    "negative": "negate",
-    "vignette": "vignette=PI/4",
-    "grain": "noise=alls=18:allf=t",
-    "mirror": "hflip",
-    "flipv": "vflip",
+    "cinematic": "colorbalance=rs=-.1:gs=-.02:bs=.14:bm=.06:rh=.08:bh=-.06,eq=contrast=1.1:saturation=1.1",
+    "retro": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131,eq=contrast=0.9:brightness=0.03,vignette=PI/5",
+    "neon": "eq=saturation=1.9:contrast=1.15,hue=h=12",
+    "dusk": "colorbalance=rs=.12:bs=.12:rm=.05:bm=.1,eq=brightness=-0.04:saturation=1.15",
 }
 
 
-def fx_list(item):
-    return [EFFECTS[f] for f in (item.get("fx") or []) if f in EFFECTS]
+def effect_chain(kind, s, W, H, i):
+    """Filter chain for a timed effect. `s` is where it starts on the timeline, `i` is intensity 0..1."""
+    if kind == "flash":
+        return f"eq=brightness='{0.9 * i:.3f}*exp(-6*max(0,t-{s:.3f}))':eval=frame"
+    if kind == "shake":
+        k = 1 - 0.09 * i
+        return (f"crop=w=iw*{k:.3f}:h=ih*{k:.3f}:x='(iw-ow)/2+iw*{0.035 * i:.3f}*sin(t*45)':y='(ih-oh)/2+ih*{0.035 * i:.3f}*cos(t*51)',"
+                f"scale={W}:{H}")
+    if kind == "glitch":
+        return f"rgbashift=rh={-int(16 * i)}:bh={int(16 * i)}:gv={int(6 * i)},noise=alls={int(24 * i)}:allf=t"
+    if kind == "blur":
+        return f"gblur=sigma={max(0.5, 20 * i):.1f}"
+    if kind == "zoom":
+        z = 0.16 * i
+        return (f"scale=w='{W}*(1+{z:.3f}*abs(sin((t-{s:.3f})*6)))':h='{H}*(1+{z:.3f}*abs(sin((t-{s:.3f})*6)))':eval=frame,"
+                f"crop={W}:{H}")
+    if kind == "vhs":
+        return f"noise=alls={int(28 * i)}:allf=t+u,rgbashift=rh=-3:bh=3,eq=saturation=1.25:contrast=1.06"
+    if kind == "bars":
+        return "drawbox=x=0:y=0:w=iw:h=ih*0.11:color=black:t=fill,drawbox=x=0:y=ih*0.89:w=iw:h=ih*0.11:color=black:t=fill"
+    if kind == "vignette":
+        return "vignette=PI/4"
+    if kind == "grain":
+        return f"noise=alls={int(10 + 28 * i)}:allf=t"
+    if kind == "mirror":
+        return "hflip"
+    if kind == "negative":
+        return "negate"
+    if kind == "pulse":
+        return (f"eq=saturation='1+{0.9 * i:.2f}*abs(sin((t-{s:.3f})*6))':brightness='{0.07 * i:.3f}*abs(sin((t-{s:.3f})*6))':eval=frame")
+    if kind == "pixel":
+        n = max(6, int(8 + 26 * i))
+        return f"scale=iw/{n}:ih/{n}:flags=neighbor,scale={W}:{H}:flags=neighbor"
+    return None
+
+
+EFFECT_KINDS = {"flash", "shake", "glitch", "blur", "zoom", "vhs", "bars", "vignette", "grain", "mirror", "negative", "pulse", "pixel"}
+
+
+def lane_flag(project, key, flag):
+    return bool(((project.get("lanes") or {}).get(key) or {}).get(flag))
+
+
+def fg_chain(src_label, dst_label, mode, W, H, tag, tf, bg_dur):
+    """Fit a clip onto the canvas, with an optional scale / move / rotate / opacity (CapCut-style transform)."""
+    scale = clamp(tf.get("scale", 100), 10, 400, 100) / 100
+    px = clamp(tf.get("x", 0), -150, 150, 0)
+    py = clamp(tf.get("y", 0), -150, 150, 0)
+    rot = clamp(tf.get("rot", 0), -360, 360, 0)
+    opac = clamp(tf.get("opacity", 100), 0, 100, 100) / 100
+    plain = abs(scale - 1) < 1e-3 and abs(px) < 0.05 and abs(py) < 0.05 and abs(rot) < 0.05 and opac > 0.999
+    if plain:
+        if mode == "fill":
+            return [f"[{src_label}]scale={W}:{H}:force_original_aspect_ratio=increase,crop={W}:{H}[{dst_label}]"]
+        if mode == "blur":
+            return [
+                f"[{src_label}]split[s{tag}a][s{tag}b]",
+                f"[s{tag}a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},gblur=sigma=8,scale={W}:{H}[bg{tag}]",
+                f"[s{tag}b]scale={W}:{H}:force_original_aspect_ratio=decrease[fg{tag}]",
+                f"[bg{tag}][fg{tag}]overlay=(W-w)/2:(H-h)/2[{dst_label}]",
+            ]
+        return [f"[{src_label}]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black[{dst_label}]"]
+    out = []
+    if mode == "blur":
+        out += [f"[{src_label}]split[s{tag}a][s{tag}b]",
+                f"[s{tag}a]scale={W // 4}:{H // 4}:force_original_aspect_ratio=increase,crop={W // 4}:{H // 4},gblur=sigma=8,scale={W}:{H}[bg{tag}]"]
+        fsrc = f"s{tag}b"
+    else:
+        out.append(f"color=c=black:s={W}x{H}:r=30:d={bg_dur:.3f}[bg{tag}]")
+        fsrc = src_label
+    fit = "increase" if mode == "fill" else "decrease"
+    steps = [f"scale={W}:{H}:force_original_aspect_ratio={fit}"]
+    if mode == "fill":
+        steps.append(f"crop={W}:{H}")
+    if abs(scale - 1) > 1e-3:
+        steps.append(f"scale=trunc(iw*{scale:.4f}/2)*2:trunc(ih*{scale:.4f}/2)*2")
+    steps.append("format=rgba")
+    if abs(rot) > 0.05:
+        a = rot * 3.14159265 / 180
+        steps.append(f"rotate=a={a:.5f}:ow=rotw({a:.5f}):oh=roth({a:.5f}):c=none")
+    if opac < 0.999:
+        steps.append(f"colorchannelmixer=aa={opac:.3f}")
+    out.append(f"[{fsrc}]{','.join(steps)}[fg{tag}]")
+    out.append(f"[bg{tag}][fg{tag}]overlay=x=(W-w)/2+W*{px:.3f}/100:y=(H-h)/2+H*{py:.3f}/100:format=auto[{dst_label}]")
+    return out
 
 
 def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
@@ -168,11 +236,10 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         fo = clamp(c.get("fadeOut", 0), 0, D / 2, 0)
 
         graph.append(f"[{i}:v]setpts=(PTS-STARTPTS)/{speed:.5f},fps={fps},trim=end={D:.3f},setpts=PTS-STARTPTS,format=yuv420p[r{i}]")
-        graph += fit_chain(f"r{i}", f"f{i}", mode, W, H, i)
+        graph += fg_chain(f"r{i}", f"f{i}", mode, W, H, i, c.get("transform") or {}, D)
         post = ["setsar=1"]
         if b or ct or sa:
             post.append(f"eq=brightness={b / 250:.4f}:contrast={1 + ct / 100:.4f}:saturation={1 + sa / 100:.4f}")
-        post += fx_list(c)
         if fi:
             post.append(f"fade=t=in:st=0:d={fi:.3f}")
         if fo:
@@ -180,7 +247,7 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         post += ["format=yuv420p", "settb=1/90000"]
         graph.append(f"[f{i}]{','.join(post)}[v{i}]")
 
-        vol = 0.0 if c.get("mute") else clamp(c.get("volume", 1), 0, 3, 1)
+        vol = 0.0 if (c.get("mute") or lane_flag(project, "main", "muted")) else clamp(c.get("volume", 1), 0, 3, 1)
         if has_audio:
             ap = [atempo(speed)] if abs(speed - 1) > 1e-3 else []
             ap.append(f"volume={vol:.3f}")
@@ -207,7 +274,10 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         acc += lens[k] - ovs[k]
         cv, ca = nv, na
     total = acc
-    graph.append(f"[{cv}]null[vc]")
+    if lane_flag(project, "main", "hidden"):
+        graph.append(f"[{cv}]colorchannelmixer=0:0:0:0:0:0:0:0:0:0:0:0[vc]")
+    else:
+        graph.append(f"[{cv}]null[vc]")
     graph.append(f"[{ca}]anull[ac]")
     last = "vc"
 
@@ -216,7 +286,8 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
     extra_audio = []                      # labels of delayed audio streams to mix in
 
     # overlay (picture-in-picture) clips, drawn in lane order
-    for k, o in enumerate(sorted(project.get("overlay") or [], key=lambda x: (x.get("_lane", 0), x.get("start", 0)))):
+    overlays = [o for o in (project.get("overlay") or []) if not lane_flag(project, f"o{int(o.get('lane', 0))}", "hidden")]
+    for k, o in enumerate(sorted(overlays, key=lambda x: (x.get("lane", 0), x.get("start", 0)))):
         path = resolve(o["src"])
         has_audio, ow, oh, odur = probe(path)
         oin = clamp(o.get("in", 0), 0, 1e6, 0)
@@ -234,6 +305,7 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         sc = clamp(o.get("scale", 35), 5, 100, 35)
         w = max(16, int(W * sc / 100) // 2 * 2)
         opac = clamp(o.get("opacity", 1), 0.05, 1, 1)
+        rot = clamp(o.get("rot", 0), -360, 360, 0)
         fi = clamp(o.get("fadeIn", 0), 0, L / 2, 0)
         fo = clamp(o.get("fadeOut", 0), 0, L / 2, 0)
         flt = o.get("filter") or {}
@@ -243,7 +315,9 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         ch = [f"setpts=(PTS-STARTPTS)/{sp:.5f}+{start:.3f}/TB", f"fps={fps}", f"scale={w}:-2", "format=yuva420p"]
         if b or ct or sa:
             ch.append(f"eq=brightness={b / 250:.4f}:contrast={1 + ct / 100:.4f}:saturation={1 + sa / 100:.4f}")
-        ch += fx_list(o)
+        if abs(rot) > 0.05:
+            a = rot * 3.14159265 / 180
+            ch += ["format=rgba", f"rotate=a={a:.5f}:ow=rotw({a:.5f}):oh=roth({a:.5f}):c=none", "format=yuva420p"]
         if opac < 0.999:
             ch.append(f"colorchannelmixer=aa={opac:.3f}")
         if fi:
@@ -256,7 +330,7 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         graph.append(f"[{last}][ov{k}]overlay=x=(W*{x:.2f}/100)-(w/2):y=(H*{y:.2f}/100)-(h/2):"
                      f"enable='between(t,{start:.3f},{start + L:.3f})':eof_action=pass[{nxt}]")
         last = nxt
-        if has_audio and not o.get("mute"):
+        if has_audio and not o.get("mute") and not lane_flag(project, f"o{int(o.get('lane', 0))}", "muted"):
             vol = clamp(o.get("volume", 1), 0, 3, 1)
             ap = [atempo(sp)] if abs(sp - 1) > 1e-3 else []
             ap += [f"volume={vol:.3f}", "aresample=48000", "aformat=channel_layouts=stereo",
@@ -264,8 +338,31 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
             graph.append(f"[{idx}:a]{','.join(ap)}[oa{k}]")
             extra_audio.append(f"oa{k}")
 
+    # looks and effects: each one runs on a copy of the picture and is laid back over just its stretch of time
+    timed = [("l", f) for f in (project.get("look") or [])] + [("e", e) for e in (project.get("effect") or [])]
+    timed = [(kind, it) for kind, it in timed if not lane_flag(project, f"{kind}{int(it.get('lane', 0))}", "hidden")]
+    timed.sort(key=lambda kv: (kv[0] != "l", kv[1].get("lane", 0), kv[1].get("start", 0)))
+    for k, (kind, it) in enumerate(timed):
+        s0 = clamp(it.get("start", 0), 0, total, 0)
+        e0 = min(total, s0 + clamp(it.get("dur", 2), 0.1, 3600, 2))
+        inten = clamp(it.get("intensity", 100), 0, 100, 100) / 100
+        t = it.get("type")
+        chain = FILTERS.get(t) if kind == "l" else (effect_chain(t, s0, W, H, inten) if t in EFFECT_KINDS else None)
+        if not chain or e0 <= s0:
+            continue
+        a_, b_, c_, nxt = f"tm{k}a", f"tm{k}b", f"tm{k}f", f"tm{k}"
+        graph.append(f"[{last}]split[{a_}][{b_}]")
+        mix = ""
+        if kind == "l" and inten < 0.995:
+            mix = f",format=rgba,colorchannelmixer=aa={inten:.3f}"
+        graph.append(f"[{b_}]{chain}{mix}[{c_}]")
+        graph.append(f"[{a_}][{c_}]overlay=enable='between(t,{s0:.3f},{e0:.3f})':format=auto[{nxt}]")
+        last = nxt
+
     # text overlays
     for k, t in enumerate(project.get("text") or []):
+        if lane_flag(project, f"t{int(t.get('lane', 0))}", "hidden"):
+            continue
         text = str(t.get("text", "")).strip("\n")
         if not text:
             continue
@@ -299,6 +396,8 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
 
     # music / extra audio
     for k, a in enumerate(project.get("audio") or []):
+        if lane_flag(project, f"a{int(a.get('lane', 0))}", "muted"):
+            continue
         path = resolve(a["src"])
         _, _, _, adur = probe(path)
         ain = clamp(a.get("in", 0), 0, 1e6, 0)
