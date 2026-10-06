@@ -15,15 +15,16 @@ import traceback
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse
 
 import editor
 import engine
 import games
+import sfx
 import share
 import winbits
 
-VERSION = "1.3.0"
+VERSION = "1.4.0"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -112,6 +113,7 @@ class App:
         self.update_status = {"state": "idle", "checked": None, "error": ""}
         self.ext_files = {}   # audio files picked in the editor: id -> path
         self.jobs = {}        # editor exports in progress
+        self.sound_urls = set()   # online sounds the library search returned
         self._durations = {}
 
     def check_update(self, manual=False):
@@ -527,6 +529,72 @@ class App:
         self.ext_files[fid] = str(path)
         return {"ok": True, "id": "ext:" + fid, "name": Path(path).stem}
 
+    def register_ext(self, path):
+        path = str(path)
+        for fid, p in self.ext_files.items():
+            if p == path:
+                return "ext:" + fid
+        fid = secrets.token_hex(6)
+        self.ext_files[fid] = path
+        return "ext:" + fid
+
+    def search_sounds(self, q, kind, page):
+        """Free (CC0 / public domain) sounds from Openverse. No account or key needed."""
+        import urllib.request
+        q = (q or "").strip() or ("music" if kind == "music" else "sound effect")
+        params = {"q": q, "license": "cc0,pdm", "page_size": 20, "page": max(1, int(page or 1)), "extension": "mp3"}
+        req = urllib.request.Request("https://api.openverse.org/v1/audio/?" + urlencode(params),
+                                     headers={"User-Agent": "Rewind/1.0 (video editor)", "Accept": "application/json"})
+        try:
+            with urllib.request.urlopen(req, timeout=15) as r:
+                data = json.load(r)
+        except Exception as e:
+            log(f"sound search failed: {e}")
+            return {"ok": False, "error": "Couldn't reach the free sound library. Check your internet and try again."}
+        out = []
+        for it in data.get("results", []):
+            dur = (it.get("duration") or 0) / 1000
+            url = it.get("url") or ""
+            if not url.startswith("https://") or not dur:
+                continue
+            if (kind == "music" and dur < 20) or (kind != "music" and dur > 20):
+                continue
+            self.sound_urls.add(url)
+            out.append({"title": it.get("title") or "Untitled", "creator": it.get("creator") or "", "source": it.get("source") or "",
+                        "duration": round(dur, 1), "url": url, "license": (it.get("license") or "").upper()})
+        return {"ok": True, "results": out, "more": (data.get("page_count") or 1) > int(page or 1)}
+
+    def fetch_sound(self, url, title):
+        import hashlib
+        import urllib.request
+        if url not in self.sound_urls:
+            return {"ok": False, "error": "Search for the sound first."}
+        folder = DATA_DIR / "sounds"
+        folder.mkdir(parents=True, exist_ok=True)
+        dest = folder / (hashlib.sha1(url.encode()).hexdigest()[:16] + ".mp3")
+        if not dest.exists():
+            try:
+                req = urllib.request.Request(url, headers={"User-Agent": "Rewind/1.0"})
+                with urllib.request.urlopen(req, timeout=30) as r, open(str(dest) + ".part", "wb") as f:
+                    size = 0
+                    while True:
+                        chunk = r.read(1 << 16)
+                        if not chunk:
+                            break
+                        size += len(chunk)
+                        if size > 40 * 1024 * 1024:
+                            raise RuntimeError("That sound is too big.")
+                        f.write(chunk)
+                os.replace(str(dest) + ".part", dest)
+            except Exception as e:
+                log(f"sound download failed: {e}")
+                try:
+                    Path(str(dest) + ".part").unlink()
+                except OSError:
+                    pass
+                return {"ok": False, "error": "Couldn't download that sound."}
+        return {"ok": True, "id": self.register_ext(dest), "name": (title or "Sound")[:60]}
+
     def start_export(self, body):
         project = body.get("project") or {}
         try:
@@ -711,6 +779,9 @@ class Handler(BaseHTTPRequestHandler):
             if path in ("/editor.js", "/editor.css"):
                 f = UI_FILE.parent / path[1:]
                 return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")
+            if path == "/api/editor/sounds":
+                q = parse_qs(urlparse(self.path).query)
+                return self._send(200, APP.search_sounds(q.get("q", [""])[0], q.get("kind", ["sfx"])[0], q.get("page", ["1"])[0]))
             if path == "/api/editor/job":
                 return self._send(200, APP.job_state(parse_qs(urlparse(self.path).query).get("id", [""])[0]))
             if path.startswith("/ext/"):
@@ -810,6 +881,14 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, {"ok": True})
             if path == "/api/editor/pick-audio":
                 return self._send(200, APP.pick_audio())
+            if path == "/api/editor/sound-fetch":
+                return self._send(200, APP.fetch_sound(body.get("url", ""), body.get("title", "")))
+            if path == "/api/editor/sfx":
+                try:
+                    p = sfx.ensure(body.get("name", ""), DATA_DIR / "sfx")
+                    return self._send(200, {"ok": True, "id": APP.register_ext(p), "name": sfx.NAMES[body["name"]]})
+                except ValueError:
+                    return self._send(200, {"ok": False, "error": "Unknown sound."})
             if path == "/api/editor/export":
                 return self._send(200, APP.start_export(body))
             if path == "/api/editor/cancel":

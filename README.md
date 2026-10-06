@@ -30,6 +30,14 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.4.0
+
+- **Editor: multiple tracks.** Put clips on top of the main video as picture-in-picture layers (move, resize, fade, set opacity), stack text on its own lanes, and run several sound tracks at once.
+- **Editor: transitions.** Twelve free transitions between clips (fade, dissolve, dip to black, wipes, slides, circle open and close, zoom), with adjustable length.
+- **Editor: effects.** Thirteen free effects you can stack on any clip or layer: black and white, sepia, vivid, cool, warm, faded film, blur, sharpen, negative, vignette, film grain, mirror and flip.
+- **Editor: free sounds.** Twelve built-in sound effects, plus a search of free music and sound effects online (public domain and CC0, no credit needed).
+- The editor now has the minimise, maximise and close buttons and can be dragged by its top bar.
+
 ## 1.3.0
 
 - **Video editor.** Open any clip and press Open in editor: a multi-clip timeline with split, trim, reorder, speed (0.25x to 4x), volume, fades, brightness / contrast / saturation, text with fonts, colours and outlines, music and sound tracks, 16:9 / 9:16 / 1:1 / 4:5 canvases with Fit, Fill or Fit + blur, undo and redo, and an export to a normal mp4.

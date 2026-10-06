@@ -99,8 +99,33 @@ def fit_chain(label_in, label_out, mode, W, H, tag):
     return [f"[{label_in}]scale={W}:{H}:force_original_aspect_ratio=decrease,pad={W}:{H}:(ow-iw)/2:(oh-ih)/2:black[{label_out}]"]
 
 
+TRANSITIONS = {"fade", "fadeblack", "dissolve", "wipeleft", "wiperight", "wipeup", "wipedown", "slideleft", "slideright",
+               "circleopen", "circleclose", "zoomin"}
+
+# effect id -> ffmpeg filter (applied after the clip is fitted to the canvas)
+EFFECTS = {
+    "bw": "hue=s=0",
+    "sepia": "colorchannelmixer=.393:.769:.189:0:.349:.686:.168:0:.272:.534:.131",
+    "vivid": "eq=saturation=1.55:contrast=1.1",
+    "cool": "colorchannelmixer=rr=0.92:bb=1.12",
+    "warm": "colorchannelmixer=rr=1.12:bb=0.88",
+    "fade": "eq=contrast=0.86:brightness=0.05:saturation=0.75",
+    "blur": "gblur=sigma=6",
+    "sharpen": "unsharp=5:5:1.4",
+    "negative": "negate",
+    "vignette": "vignette=PI/4",
+    "grain": "noise=alls=18:allf=t",
+    "mirror": "hflip",
+    "flipv": "vflip",
+}
+
+
+def fx_list(item):
+    return [EFFECTS[f] for f in (item.get("fx") or []) if f in EFFECTS]
+
+
 def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
-    """Return (cmd, total_seconds). `resolve(src)` maps a source id to a file path."""
+    """Return (cmd, total_seconds, workdir). `resolve(src)` maps a source id to a file path."""
     vids = project.get("video") or []
     if not vids:
         raise EditorError("Add at least one clip to the timeline first.")
@@ -111,7 +136,8 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
     workdir = Path(workdir or tempfile.mkdtemp(prefix="rewind-edit-"))
 
     inputs, graph = [], []
-    durations = []
+    lens, ovs = [], []
+    n = len(vids)
     for i, c in enumerate(vids):
         path = resolve(c["src"])
         has_audio, _, _, src_dur = probe(path)
@@ -122,8 +148,17 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
             cin = min(cin, max(0, cout - 0.05))
         speed = clamp(c.get("speed", 1), 0.25, 4, 1)
         D = (cout - cin) / speed
-        durations.append(D)
+        lens.append(D)
         inputs += ["-ss", f"{cin:.3f}", "-t", f"{cout - cin:.3f}", "-i", str(path)]
+
+        # the transition INTO this clip overlaps it with the one before
+        tr = c.get("transition") or {}
+        ov = 0.0
+        if i > 0 and tr.get("type") in TRANSITIONS:
+            ov = clamp(tr.get("dur", 0.6), 0.1, 3, 0.6)
+            ov = min(ov, lens[i - 1] - ovs[i - 1] - 0.05, D * 0.9)
+            ov = max(0.0, ov)
+        ovs.append(ov)
 
         flt = c.get("filter") or {}
         b = clamp(flt.get("b", 0), -100, 100, 0)
@@ -132,16 +167,17 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         fi = clamp(c.get("fadeIn", 0), 0, D / 2, 0)
         fo = clamp(c.get("fadeOut", 0), 0, D / 2, 0)
 
-        graph.append(f"[{i}:v]setpts=(PTS-STARTPTS)/{speed:.5f},fps={fps},format=yuv420p[r{i}]")
+        graph.append(f"[{i}:v]setpts=(PTS-STARTPTS)/{speed:.5f},fps={fps},trim=end={D:.3f},setpts=PTS-STARTPTS,format=yuv420p[r{i}]")
         graph += fit_chain(f"r{i}", f"f{i}", mode, W, H, i)
         post = ["setsar=1"]
         if b or ct or sa:
             post.append(f"eq=brightness={b / 250:.4f}:contrast={1 + ct / 100:.4f}:saturation={1 + sa / 100:.4f}")
+        post += fx_list(c)
         if fi:
             post.append(f"fade=t=in:st=0:d={fi:.3f}")
         if fo:
             post.append(f"fade=t=out:st={D - fo:.3f}:d={fo:.3f}")
-        post.append("format=yuv420p")
+        post += ["format=yuv420p", "settb=1/90000"]
         graph.append(f"[f{i}]{','.join(post)}[v{i}]")
 
         vol = 0.0 if c.get("mute") else clamp(c.get("volume", 1), 0, 3, 1)
@@ -152,17 +188,83 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
                 ap.append(f"afade=t=in:st=0:d={fi:.3f}")
             if fo:
                 ap.append(f"afade=t=out:st={D - fo:.3f}:d={fo:.3f}")
-            ap += ["aresample=48000", "aformat=channel_layouts=stereo", "asetpts=PTS-STARTPTS"]
+            ap += ["aresample=48000", "aformat=channel_layouts=stereo", f"apad=whole_dur={D:.3f}", f"atrim=end={D:.3f}", "asetpts=PTS-STARTPTS"]
             graph.append(f"[{i}:a]{','.join(ap)}[a{i}]")
         else:
             graph.append(f"anullsrc=r=48000:cl=stereo,atrim=0:{D:.3f},asetpts=PTS-STARTPTS[a{i}]")
 
-    n = len(vids)
-    total = sum(durations)
-    graph.append("".join(f"[v{i}][a{i}]" for i in range(n)) + f"concat=n={n}:v=1:a=1[vc][ac]")
+    # join the main track: cuts are concats, transitions are xfade + acrossfade
+    cv, ca, acc = "v0", "a0", lens[0]
+    for k in range(1, n):
+        tr = (vids[k].get("transition") or {}).get("type")
+        nv, na = f"jv{k}", f"ja{k}"
+        if ovs[k] > 0:
+            graph.append(f"[{cv}][v{k}]xfade=transition={tr}:duration={ovs[k]:.3f}:offset={acc - ovs[k]:.3f}[{nv}]")
+            graph.append(f"[{ca}][a{k}]acrossfade=d={ovs[k]:.3f}:c1=tri:c2=tri[{na}]")
+        else:
+            graph.append(f"[{cv}][v{k}]concat=n=2:v=1:a=0[{nv}]")
+            graph.append(f"[{ca}][a{k}]concat=n=2:v=0:a=1[{na}]")
+        acc += lens[k] - ovs[k]
+        cv, ca = nv, na
+    total = acc
+    graph.append(f"[{cv}]null[vc]")
+    graph.append(f"[{ca}]anull[ac]")
+    last = "vc"
+
+    # extra inputs (overlays and music) come after the main clips
+    next_in = n
+    extra_audio = []                      # labels of delayed audio streams to mix in
+
+    # overlay (picture-in-picture) clips, drawn in lane order
+    for k, o in enumerate(sorted(project.get("overlay") or [], key=lambda x: (x.get("_lane", 0), x.get("start", 0)))):
+        path = resolve(o["src"])
+        has_audio, ow, oh, odur = probe(path)
+        oin = clamp(o.get("in", 0), 0, 1e6, 0)
+        oout = clamp(o.get("out", odur), oin + 0.05, 1e6, oin + 1)
+        if odur:
+            oout = min(oout, odur)
+            oin = min(oin, max(0, oout - 0.05))
+        sp = clamp(o.get("speed", 1), 0.25, 4, 1)
+        L = (oout - oin) / sp
+        start = clamp(o.get("start", 0), 0, total, 0)
+        L = min(L, max(0.1, total - start))
+        inputs += ["-ss", f"{oin:.3f}", "-t", f"{L * sp:.3f}", "-i", str(path)]
+        idx = next_in
+        next_in += 1
+        sc = clamp(o.get("scale", 35), 5, 100, 35)
+        w = max(16, int(W * sc / 100) // 2 * 2)
+        opac = clamp(o.get("opacity", 1), 0.05, 1, 1)
+        fi = clamp(o.get("fadeIn", 0), 0, L / 2, 0)
+        fo = clamp(o.get("fadeOut", 0), 0, L / 2, 0)
+        flt = o.get("filter") or {}
+        b = clamp(flt.get("b", 0), -100, 100, 0)
+        ct = clamp(flt.get("c", 0), -100, 100, 0)
+        sa = clamp(flt.get("s", 0), -100, 100, 0)
+        ch = [f"setpts=(PTS-STARTPTS)/{sp:.5f}+{start:.3f}/TB", f"fps={fps}", f"scale={w}:-2", "format=yuva420p"]
+        if b or ct or sa:
+            ch.append(f"eq=brightness={b / 250:.4f}:contrast={1 + ct / 100:.4f}:saturation={1 + sa / 100:.4f}")
+        ch += fx_list(o)
+        if opac < 0.999:
+            ch.append(f"colorchannelmixer=aa={opac:.3f}")
+        if fi:
+            ch.append(f"fade=t=in:st={start:.3f}:d={fi:.3f}:alpha=1")
+        if fo:
+            ch.append(f"fade=t=out:st={start + L - fo:.3f}:d={fo:.3f}:alpha=1")
+        graph.append(f"[{idx}:v]{','.join(ch)}[ov{k}]")
+        x, y = clamp(o.get("x", 70), 0, 100, 70), clamp(o.get("y", 30), 0, 100, 30)
+        nxt = f"vo{k}"
+        graph.append(f"[{last}][ov{k}]overlay=x=(W*{x:.2f}/100)-(w/2):y=(H*{y:.2f}/100)-(h/2):"
+                     f"enable='between(t,{start:.3f},{start + L:.3f})':eof_action=pass[{nxt}]")
+        last = nxt
+        if has_audio and not o.get("mute"):
+            vol = clamp(o.get("volume", 1), 0, 3, 1)
+            ap = [atempo(sp)] if abs(sp - 1) > 1e-3 else []
+            ap += [f"volume={vol:.3f}", "aresample=48000", "aformat=channel_layouts=stereo",
+                   f"adelay={int(start * 1000)}|{int(start * 1000)}"]
+            graph.append(f"[{idx}:a]{','.join(ap)}[oa{k}]")
+            extra_audio.append(f"oa{k}")
 
     # text overlays
-    last = "vc"
     for k, t in enumerate(project.get("text") or []):
         text = str(t.get("text", "")).strip("\n")
         if not text:
@@ -196,7 +298,6 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         last = nxt
 
     # music / extra audio
-    mixes = []
     for k, a in enumerate(project.get("audio") or []):
         path = resolve(a["src"])
         _, _, _, adur = probe(path)
@@ -207,11 +308,9 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
             ain = min(ain, max(0, aout - 0.05))
         start = clamp(a.get("start", 0), 0, total, 0)
         length = min(aout - ain, max(0.05, total - start))
-        mixes.append((path, ain, length, start, a))
-    base_inputs = n
-    for k, (path, ain, length, start, a) in enumerate(mixes):
         inputs += ["-ss", f"{ain:.3f}", "-t", f"{length:.3f}", "-i", str(path)]
-        idx = base_inputs + k
+        idx = next_in
+        next_in += 1
         vol = clamp(a.get("volume", 1), 0, 3, 1)
         fi = clamp(a.get("fadeIn", 0), 0, length / 2, 0)
         fo = clamp(a.get("fadeOut", 0), 0, length / 2, 0)
@@ -223,9 +322,10 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         ms = int(start * 1000)
         ap += [f"adelay={ms}|{ms}", "aresample=48000", "aformat=channel_layouts=stereo"]
         graph.append(f"[{idx}:a]{','.join(ap)}[m{k}]")
-    if mixes:
-        labels = "[ac]" + "".join(f"[m{k}]" for k in range(len(mixes)))
-        graph.append(f"{labels}amix=inputs={1 + len(mixes)}:duration=first:normalize=0:dropout_transition=0[aout]")
+        extra_audio.append(f"m{k}")
+    if extra_audio:
+        labels = "[ac]" + "".join(f"[{x}]" for x in extra_audio)
+        graph.append(f"{labels}amix=inputs={1 + len(extra_audio)}:duration=first:normalize=0:dropout_transition=0[aout]")
         alabel = "aout"
     else:
         alabel = "ac"

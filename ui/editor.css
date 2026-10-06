@@ -1,5 +1,5 @@
 /* Rewind video editor */
-#ed { position: fixed; inset: 0; z-index: 40; display: none; background: #09090b; color: #f1f1f3; grid-template-columns: 280px minmax(0, 1fr) 300px; grid-template-rows: 52px minmax(0, 1fr) 318px; font-size: 13.5px; user-select: none; }
+#ed { position: fixed; inset: 0; z-index: 40; display: none; background: #09090b; color: #f1f1f3; grid-template-columns: 280px minmax(0, 1fr) 300px; grid-template-rows: 52px minmax(0, 1fr) 372px; font-size: 13.5px; user-select: none; }
 #ed.on { display: grid; }
 #ed * { box-sizing: border-box; }
 #ed button { font: inherit; color: inherit; cursor: pointer; }
@@ -17,7 +17,7 @@
 /* left: media */
 #ed .ed-left { background: #0d0d10; border-right: 1px solid #1c1c21; display: flex; flex-direction: column; min-height: 0; }
 .ed-tabs { display: flex; gap: 4px; padding: 10px 10px 6px; }
-.ed-tabs button { flex: 1; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #9a9aa5; font-weight: 650; }
+.ed-tabs button { flex: 1; height: 32px; padding: 0 2px; font-size: 12.5px; border: 0; border-radius: 8px; background: transparent; color: #9a9aa5; font-weight: 650; }
 .ed-tabs button.on { background: #1f1f25; color: #fff; }
 .ed-pane { flex: 1; overflow-y: auto; padding: 6px 12px 14px; scrollbar-color: #2a2a31 transparent; }
 .ed-pane h4 { margin: 14px 0 8px; font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: #77777f; }
@@ -102,3 +102,50 @@
 .ed-err { color: #ff7b8c; font-size: 13px; margin-top: 8px; }
 .ed-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 @media (max-width: 1100px) { #ed { grid-template-columns: 220px minmax(0, 1fr) 250px; } }
+
+/* window controls + drag (the editor covers the app's own title bar) */
+.ed-win { display: flex; align-self: stretch; margin: 0 -14px 0 8px; }
+.ed-win[hidden] { display: none; }
+.ed-win button { width: 46px; border: 0; background: none; color: #9a9aa5; display: grid; place-items: center; border-radius: 0; }
+.ed-win button svg { width: 14px; height: 14px; } .ed-win button:hover { background: #1c1c22; color: #fff; } .ed-win button.close:hover { background: #c42b1c; color: #fff; }
+
+/* tracks: overlay layers and transitions */
+.ed-track.o { margin-top: 6px; }
+.ed-item.ov { background: #0f5a7a center/auto 100% repeat-x; }
+.ed-item.ov::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(4,20,30,.6), rgba(4,20,30,.25) 40%, rgba(4,20,30,.6)); pointer-events: none; }
+.ed-tmark { position: absolute; top: 0; bottom: 0; z-index: 4; pointer-events: none; display: grid; place-items: center; color: #fff;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,.34) 0 6px, rgba(255,255,255,.12) 6px 12px); border-left: 1px solid rgba(255,255,255,.7); border-right: 1px solid rgba(255,255,255,.7); }
+.ed-tmark b { font-size: 14px; text-shadow: 0 1px 3px rgba(0,0,0,.8); }
+
+/* media + effect tiles */
+.ed-mi { position: relative; }
+.ed-mi .pip { position: absolute; right: 5px; top: 5px; width: 24px; height: 24px; border-radius: 6px; background: rgba(0,0,0,.65); display: none; place-items: center; font-style: normal; color: #fff; }
+.ed-mi:hover .pip { display: grid; } .ed-mi .pip:hover { background: #3d8bff; } .ed-mi .pip svg { width: 15px; height: 15px; }
+.ed-fx { background: #15151a; border: 1px solid transparent; border-radius: 9px; overflow: hidden; padding: 0; text-align: left; }
+.ed-fx .th { aspect-ratio: 16/9; background: #000 center/cover no-repeat; } .ed-fx b { display: block; padding: 6px 8px 7px; font-size: 12px; }
+.ed-fx:hover { border-color: #3d8bff; } .ed-fx.on { border-color: #3d8bff; box-shadow: inset 0 0 0 1px #3d8bff; }
+.ed-trgrid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.ed-tr { background: #15151a; border: 1px solid transparent; border-radius: 9px; padding: 8px; text-align: left; }
+.ed-tr:hover { border-color: #3d8bff; } .ed-tr.on { border-color: #3d8bff; box-shadow: inset 0 0 0 1px #3d8bff; }
+.ed-tr b { display: block; margin-top: 7px; font-size: 12px; }
+.ed-tr .tp { display: block; height: 44px; border-radius: 6px; position: relative; overflow: hidden; background: linear-gradient(135deg, #2f7bff, #22d3ee); }
+.ed-tr .tp::after { content: ""; position: absolute; inset: 0; background: linear-gradient(135deg, #ff7a59, #ffd23f); }
+.ed-tr .tp-fade::after, .ed-tr .tp-dissolve::after { opacity: .55; }
+.ed-tr .tp-fadeblack::after { background: #000; opacity: .7; }
+.ed-tr .tp-wipeleft::after { clip-path: inset(0 0 0 45%); } .ed-tr .tp-wiperight::after { clip-path: inset(0 45% 0 0); }
+.ed-tr .tp-wipeup::after { clip-path: inset(45% 0 0 0); } .ed-tr .tp-wipedown::after { clip-path: inset(0 0 45% 0); }
+.ed-tr .tp-slideleft::after { transform: translateX(45%); } .ed-tr .tp-slideright::after { transform: translateX(-45%); }
+.ed-tr .tp-circleopen::after { clip-path: circle(38% at 50% 50%); } .ed-tr .tp-circleclose::after { clip-path: circle(80% at 50% 50%); opacity: .55; }
+.ed-tr .tp-zoomin::after { transform: scale(.55); border-radius: 6px; }
+
+/* sounds */
+.ed-sfx { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.ed-snd { display: flex; align-items: center; gap: 8px; background: #15151a; border-radius: 9px; padding: 6px 8px; min-width: 0; }
+.ed-snd b { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-snd b small { display: block; color: #77777f; font-weight: 500; font-size: 11px; overflow: hidden; text-overflow: ellipsis; }
+.ed-snd button { width: 26px; height: 26px; border: 0; border-radius: 50%; background: #25252c; font-size: 10px; flex-shrink: 0; padding: 0; }
+.ed-snd .ad { background: #3d8bff; color: #fff; font-size: 16px; line-height: 1; } .ed-snd .pl:hover, .ed-snd .pl.on { background: #3d8bff; color: #fff; }
+#ed-results .ed-snd { margin: 6px 0; }
+.ed-search input { width: 100%; background: #050507; border: 1px solid #24242b; border-radius: 8px; padding: 8px 10px; user-select: text; }
+.ed-search input:focus { outline: 0; border-color: #3d8bff; }
+.ed-ruler span:first-child { transform: none; margin-left: 3px; }
