@@ -22,7 +22,7 @@ import games
 import share
 import winbits
 
-VERSION = "1.1.1"
+VERSION = "1.2.0"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -296,7 +296,7 @@ class App:
     def apply_hotkey(self, which, retries=0):
         hk, h = self.hotkeys[which], self.settings.get(HOTKEY_KEYS[which])
         if h:
-            hk.set(h["mods"], h["vk"], retries)
+            hk.set(h["mods"], h["vk"], retries, hold=2.0 if h.get("mode") == "long" else 0.0)
         else:
             hk.clear()
             hk.ok, hk.error = True, ""
@@ -365,7 +365,7 @@ class App:
             "settings": self.settings,
             "hotkey_ok": self.hotkey.ok, "hotkey_error": self.hotkey.error, "hotkey_label": h["label"],
             "hotkeys": {w: {"label": (self.settings.get(k) or {}).get("label", ""), "ok": self.hotkeys[w].ok,
-                            "error": self.hotkeys[w].error} for w, k in HOTKEY_KEYS.items()},
+                            "error": self.hotkeys[w].error, "mode": (self.settings.get(k) or {}).get("mode", "tap")} for w, k in HOTKEY_KEYS.items()},
             "monitors": self.monitors, "mics": self.mics,
             "events": self.events[-5:],
             "clip_count": len(self.clip_files()),
@@ -697,7 +697,12 @@ class Handler(BaseHTTPRequestHandler):
                     APP.update_settings({key: None})
                     return self._send(200, {"ok": True})
                 old = APP.settings.get(key)
-                APP.update_settings({key: {"mods": body["mods"], "vk": body["vk"], "label": body["label"]}})
+                if "mode" in body and "vk" not in body:      # only changing tap / long press
+                    if old:
+                        APP.update_settings({key: {**old, "mode": "long" if body["mode"] == "long" else "tap"}})
+                    return self._send(200, {"ok": True})
+                mode = body.get("mode") or (old or {}).get("mode", "tap")
+                APP.update_settings({key: {"mods": body["mods"], "vk": body["vk"], "label": body["label"], "mode": mode}})
                 if not APP.hotkeys[w].ok:  # taken: keep the old one working
                     err = APP.hotkeys[w].error
                     APP.update_settings({key: old})
@@ -726,7 +731,16 @@ class Handler(BaseHTTPRequestHandler):
                 if not APP.settings.get("share_ok"):
                     return self._send(200, {"ok": False, "need_consent": True})
                 try:
-                    url = share.upload_for_link(APP.clip_path(body["name"]), body.get("hours", "72h"))
+                    src = APP.clip_path(body["name"])
+                    tmp = None
+                    if body.get("hours") == "forever" and src.stat().st_size > share.PERMANENT_MAX_MB * 1024 * 1024:
+                        tmp = share.make_discord_copy(src, share.PERMANENT_MAX_MB - 12)   # the link gets a smaller copy
+                        src = tmp
+                    try:
+                        url = share.upload_for_link(src, body.get("hours", "72h"))
+                    finally:
+                        if tmp and tmp.exists():
+                            tmp.unlink()
                     share.copy_text_to_clipboard(url)
                     return self._send(200, {"ok": True, "url": url})
                 except Exception as e:

@@ -28,10 +28,23 @@ class Hotkey:
         self.tid = None
         self.ok = False
         self.error = ""
+        self.vk = 0
+        self.hold = 0.0
 
-    def set(self, mods, vk, retries=0):
+    def _fire(self):
+        """Tap mode runs at once. Hold mode waits until the key has been held for `hold` seconds."""
+        if self.hold > 0:
+            end = time.monotonic() + self.hold
+            while time.monotonic() < end:
+                if not (user32.GetAsyncKeyState(int(self.vk)) & 0x8000):
+                    return          # let go too early: not a long press
+                time.sleep(0.02)
+        self.callback()
+
+    def set(self, mods, vk, retries=0, hold=0.0):
         """Register the shortcut. With retries, keeps trying in the background (once a second) before giving up."""
         self.clear()
+        self.vk, self.hold = vk, hold
         if not IS_WIN:
             self.ok = True
             return True
@@ -54,7 +67,7 @@ class Hotkey:
             msg = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:
                 if msg.message == WM_HOTKEY:
-                    threading.Thread(target=self.callback, daemon=True).start()
+                    threading.Thread(target=self._fire, daemon=True).start()
             user32.UnregisterHotKey(None, 1)
 
         self.thread = threading.Thread(target=loop, daemon=True)
