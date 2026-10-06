@@ -3,6 +3,7 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 import wave
 from pathlib import Path
 
@@ -28,7 +29,8 @@ class Hotkey:
         self.ok = False
         self.error = ""
 
-    def set(self, mods, vk):
+    def set(self, mods, vk, retries=0):
+        """Register the shortcut. With retries, keeps trying in the background (once a second) before giving up."""
         self.clear()
         if not IS_WIN:
             self.ok = True
@@ -37,10 +39,17 @@ class Hotkey:
 
         def loop():
             self.tid = kernel32.GetCurrentThreadId()
-            self.ok = bool(user32.RegisterHotKey(None, 1, int(mods) | MOD_NOREPEAT, int(vk)))
-            self.error = "" if self.ok else "That shortcut is already used by another app. Pick a different one."
-            ready.set()
+            for attempt in range(retries + 1):
+                self.ok = bool(user32.RegisterHotKey(None, 1, int(mods) | MOD_NOREPEAT, int(vk)))
+                if attempt == 0:
+                    self.error = "" if self.ok else ("" if retries else "That shortcut is already used by another app. Pick a different one.")
+                    ready.set()
+                if self.ok:
+                    self.error = ""
+                    break
+                time.sleep(1)
             if not self.ok:
+                self.error = "That shortcut is already used by another app. Pick a different one."
                 return
             msg = wintypes.MSG()
             while user32.GetMessageW(ctypes.byref(msg), None, 0, 0) > 0:

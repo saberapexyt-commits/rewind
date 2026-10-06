@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.7
+
+- Removed the "shortcut already in use" warning from Home. Rewind now retries quietly at startup, which fixes it after an update.
+- Website: full changelog and a clip editor section.
+
 ## 1.0.6
 
 - New clips show up in the library right away, without switching pages.

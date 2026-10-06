@@ -749,7 +749,7 @@ function render() {
   $("pill").querySelector("span").textContent = state === "buffering" ? (g && g.focused ? `Recording ${g.name}` : "Recording")
     : { saving: "Saving replay…", error: "Recording stopped", paused: "Paused", starting: "Starting…", waiting: "Waiting for game", stopped: "Paused" }[state] || state;
   $("topkey").innerHTML = `${keycaps(S.hotkey_label)}<span>Clip ${st.length >= 60 ? st.length / 60 + "m" : st.length + "s"}</span>`;
-  $("err").textContent = st.error || (S.hotkey_ok ? "" : S.hotkey_error);
+  $("err").textContent = st.error || "";
   $("savebtn").disabled = !(state === "buffering" && st.buffered > 0);
   $("togglebtn").textContent = state === "paused" ? "Resume buffer" : state === "error" ? "Try again" : state === "waiting" ? "Record now" : "Pause buffer";
 

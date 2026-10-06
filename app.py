@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.6"
+VERSION = "1.0.7"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -658,7 +658,7 @@ def main():
     log(f"Rewind {VERSION} starting")
     start_server()
     h = APP.settings["hotkey"]
-    APP.hotkey.set(h["mods"], h["vk"])
+    APP.hotkey.set(h["mods"], h["vk"], retries=20)
     APP.watcher.tick()
     APP.watcher.start()
     def begin_buffer():

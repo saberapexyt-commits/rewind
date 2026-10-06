@@ -231,6 +231,20 @@
   .ma svg { width: 15px; height: 15px; }
   .hero::before { background: radial-gradient(closest-side, var(--glow), transparent 72%); }
   @media (max-width: 960px) { .thumbs { grid-template-columns: 1fr 1fr; } .tbar .st { display: none; } .app { grid-template-columns: 1fr; } .side { display: none; } .main-pane { border-radius: 0; } .win-bar .kchip { display: none; } }
+
+  .editor-mock { max-width: 900px; margin: 0 auto; background: #0e0e10; border: 1px solid var(--line-2); border-radius: 16px; overflow: hidden; padding: 0 0 18px; box-shadow: 0 30px 80px rgba(0,0,0,.35); }
+  .em-video { position: relative; background: #000; } .em-video img { display: block; width: 100%; height: auto; aspect-ratio: 16/9; object-fit: cover; max-height: 400px; }
+  .em-ctl { position: absolute; left: 0; right: 0; bottom: 0; padding: 26px 16px 10px; display: flex; gap: 14px; font-size: 13px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,.8)); }
+  .em-ruler { display: flex; justify-content: space-between; padding: 14px 24px 6px; color: #9a9aa5; font-size: 12px; }
+  .em-strip { position: relative; margin: 0 24px; height: 60px; border-radius: 9px; background: #17171a; }
+  .em-tiles { position: absolute; inset: 0; display: flex; border-radius: 9px; overflow: hidden; } .em-tiles img { flex: 1; min-width: 0; height: 100%; object-fit: cover; }
+  .em-dim { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.66); }
+  .em-sel { position: absolute; top: -2px; bottom: -2px; border: 2px solid #fff; border-radius: 9px; }
+  .em-sel i { position: absolute; top: -2px; bottom: -2px; width: 14px; background: #fff; } .em-sel i::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 20px; margin: -10px 0 0 -1px; background: #222; border-radius: 1px; }
+  .em-sel i.l { left: -9px; border-radius: 8px 0 0 8px; } .em-sel i.r { right: -9px; border-radius: 0 8px 8px 0; }
+  .em-head { position: absolute; top: -8px; bottom: -4px; width: 2px; background: #3d8bff; } .em-head::before { content: ""; position: absolute; left: -4px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: #3d8bff; }
+  .em-row { display: flex; align-items: center; gap: 10px; padding: 18px 24px 0; font-size: 13.5px; color: #8e8e99; flex-wrap: wrap; } .em-row b { color: #f1f1f3; } .em-row .g { flex: 1; }
+  .em-row .b { padding: 8px 14px; border-radius: 9px; background: #1b1b1f; color: #f1f1f3; font-weight: 650; } .em-row .b.p { background: #3d8bff; color: #fff; }
 </style>
 </head>
 <body>
@@ -332,7 +346,29 @@
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><h3>15 seconds to 5 minutes</h3><p>Pick how far back Rewind reaches. Saving takes about a second because nothing gets re-encoded.</p></div>
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="20" height="12" rx="4"/><path d="M6 12h4M8 10v4M15 11h.01M18 13h.01"/></svg></div><h3>Knows what you're playing</h3><p>Spots the game in front and saves each replay in its own folder, like <code>Rewind\Valorant</code>. It can even start the buffer only when a game opens.</p></div>
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 5h18v12H3zM8 21h8M12 17v4"/></svg></div><h3>No black clips</h3><p>If a game blocks screen capture, Rewind notices and records the game's window instead, without you doing anything.</p></div>
+        <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v18M18 3v18M3 8h6M15 16h6"/><path d="M6 12h12"/></svg></div><h3>Trim in the app</h3><p>Open a clip, drag the handles, and save the cut as a copy or replace the original. No other editor needed.</p></div>
+        <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></div><h3>Records your mic</h3><p>Your voice is mixed into every clip. If Windows points at a silent virtual mic, Rewind picks a real one for you.</p></div>
+        <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><path d="M15 17l2 2 4-4"/></svg></div><h3>Clip library</h3><p>Clips are grouped by day with their length. Tick several and delete them in one go.</p></div>
         <div class="card"><div class="ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7M21 4v5h-5"/></svg></div><h3>Updates itself</h3><p>Rewind downloads new versions in the background. Press <b>Restart to update</b> when it suits you.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="band" id="trim">
+    <div class="wrap">
+      <div class="eyebrow">Clip editor</div>
+      <h2>Trim it right where you watch it.</h2>
+      <p class="intro">Open any clip and cut it down to the good part. Save the cut as a copy, or replace the full clip.</p>
+      <div class="editor-mock" role="img" aria-label="The Rewind player with a video on top and a trim timeline with draggable handles below.">
+        <div class="em-video"><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt=""><div class="em-ctl"><span>&#9654;</span><span>0:12 / 0:30</span></div></div>
+        <div class="em-ruler"><span>0:00</span><span>0:05</span><span>0:10</span><span>0:15</span><span>0:20</span><span>0:25</span><span>0:30</span></div>
+        <div class="em-strip">
+          <div class="em-tiles"><img src="game-valorant.jpg" alt=""><img src="game-fortnite.jpg" alt=""><img src="game-roblox.jpg" alt=""><img src="game-rocket.jpg" alt=""><img src="game-valorant.jpg" alt=""><img src="game-fortnite.jpg" alt=""></div>
+          <div class="em-dim" style="left:0;width:17%"></div><div class="em-dim" style="right:0;width:23%"></div>
+          <div class="em-sel" style="left:17%;right:23%"><i class="l"></i><i class="r"></i></div>
+          <div class="em-head" style="left:41%"></div>
+        </div>
+        <div class="em-row"><span>Keeping <b>0:05.1</b> to <b>0:23.0</b> &middot; 17.9 s of 30.0 s</span><span class="g"></span><span class="b">Save as copy</span><span class="b p">Replace original</span></div>
       </div>
     </div>
   </section>
@@ -407,6 +443,49 @@
       <div class="eyebrow">Changelog</div>
       <h2>What's new</h2>
       <p class="intro">Every release, newest first.</p>
+      <div class="rel">
+        <h3>Rewind 1.0.6</h3><time>October 6, 2026</time>
+        <ul>
+          <li>New clips show up in the library right away, without switching pages.</li>
+          <li>Select several clips (tick the box, or Ctrl+click) and delete them all at once.</li>
+          <li>No more "shortcut already in use" warning on Home. Rewind quietly retries at startup.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <h3>Rewind 1.0.5</h3><time>October 6, 2026</time>
+        <ul>
+          <li>Fixed the player: the video no longer spills over the timeline.</li>
+          <li>The save shortcut can be any single key, not just a combo.</li>
+          <li>The left sidebar has labels again, with a teal active item and the app card at the bottom.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <h3>Rewind 1.0.4</h3><time>October 6, 2026</time>
+        <ul>
+          <li>New clip player with a timeline, thumbnail strip, volume, full screen and ← → to move between clips.</li>
+          <li>Trim clips: drag the handles, then <b>Save as copy</b> or <b>Replace original</b>.</li>
+          <li>Only one Rewind can run at a time, so two copies can't garble each other's clips.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <h3>Rewind 1.0.3</h3><time>October 6, 2026</time>
+        <ul>
+          <li>Redesigned the app as a flat, dark clip library: clips grouped by day with length, size and a Watch button.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <h3>Rewind 1.0.2</h3><time>October 6, 2026</time>
+        <ul>
+          <li>Microphone on by default, with a Mic button on Home. If Windows' default mic is a silent virtual device, Rewind picks a real one.</li>
+        </ul>
+      </div>
+      <div class="rel">
+        <h3>Rewind 1.0.1</h3><time>October 6, 2026</time>
+        <ul>
+          <li>Settings → Updates: check for updates, see the status, and choose whether updates download automatically.</li>
+          <li>Refreshed Home screen.</li>
+        </ul>
+      </div>
       <div class="rel">
         <h3>Rewind 1.0.0</h3><time>First release</time>
         <ul>
