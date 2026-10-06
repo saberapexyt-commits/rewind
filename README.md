@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.1.1
+
+- Share links can now last forever: pick Forever (up to 200 MB) in the Share menu, or keep the 1 hour to 3 day options.
+
 ## 1.1.0
 
 - Hotkeys: Clip (with its length next to it), Start / stop long recording, and Bookmark. Set any of them in Settings.

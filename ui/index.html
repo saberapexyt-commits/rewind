@@ -696,11 +696,11 @@
             <div class="seg" id="sh-size"><button data-mb="10">10 MB</button><button data-mb="50">50 MB</button><button data-mb="500">500 MB</button></div></div>
           <div class="shr"><b>Get a link instead</b><small>Uploads a temporary copy and gives you a link, so there's no file to send.</small>
             <div class="linkrow">
-              <select id="sh-hours" aria-label="How long the link works"><option value="1h">1 hour</option><option value="12h">12 hours</option><option value="24h">1 day</option><option value="72h" selected>3 days</option></select>
+              <select id="sh-hours" aria-label="How long the link works"><option value="1h">1 hour</option><option value="12h">12 hours</option><option value="24h">1 day</option><option value="72h" selected>3 days</option><option value="forever">Forever (up to 200 MB)</option></select>
               <button class="btn primary" id="sh-link">Create link</button>
             </div>
             <div class="consent" id="sh-consent" hidden>
-              <p>This uploads your clip to <b>litterbox.catbox.moe</b>, a free temporary file host. Anyone who has the link can watch it until it expires. Continue?</p>
+              <p>This uploads your clip to <b>catbox.moe</b>, a free file host. Anyone who has the link can watch it, until it expires or, with Forever, until the host removes it. Continue?</p>
               <div class="linkrow"><button class="btn primary" id="sh-yes">Upload</button><button class="btn" id="sh-no">Cancel</button></div>
             </div>
             <div class="linkrow" id="sh-out" hidden><input id="sh-url" readonly aria-label="Link"><button class="btn" id="sh-urlcopy">Copy</button></div>

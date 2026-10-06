@@ -21,6 +21,9 @@ DISCORD_SIZES = {"10": 10, "50": 50, "500": 500}
 # Temporary file host. Files are removed by the host after the chosen time, no account needed.
 UPLOAD_URL = "https://litterbox.catbox.moe/resources/internals/api.php"
 UPLOAD_TIMES = ("1h", "12h", "24h", "72h")
+# "Forever": the same host's permanent side. No expiry, but it only takes files up to 200 MB.
+PERMANENT_URL = "https://catbox.moe/user/api.php"
+PERMANENT_MAX_MB = 200
 
 
 def copy_file_to_clipboard(path):
@@ -111,13 +114,20 @@ def make_discord_copy(src, target_mb):
     return dest
 
 
-def upload_for_link(path, hours="72h", url=UPLOAD_URL, progress=lambda pct: None):
-    """Upload to the temporary host and return the link it gives back."""
+def upload_for_link(path, hours="72h", url=None, progress=lambda pct: None):
+    """Upload and return the link the host gives back. hours is 1h/12h/24h/72h, or "forever"."""
     path = Path(path)
-    if hours not in UPLOAD_TIMES:
-        hours = "72h"
+    if hours == "forever":
+        if path.stat().st_size > PERMANENT_MAX_MB * 1024 * 1024:
+            raise RuntimeError(f"Permanent links take files up to {PERMANENT_MAX_MB} MB. Use Shrink for Discord first, or pick a shorter link.")
+        url = url or PERMANENT_URL
+        fields = {"reqtype": "fileupload", "userhash": ""}
+    else:
+        if hours not in UPLOAD_TIMES:
+            hours = "72h"
+        url = url or UPLOAD_URL
+        fields = {"reqtype": "fileupload", "time": hours}
     boundary = uuid.uuid4().hex
-    fields = {"reqtype": "fileupload", "time": hours}
     head = b""
     for k, v in fields.items():
         head += f'--{boundary}\r\nContent-Disposition: form-data; name="{k}"\r\n\r\n{v}\r\n'.encode()
