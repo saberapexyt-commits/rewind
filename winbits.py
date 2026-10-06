@@ -115,13 +115,14 @@ def monitors():
         mi = MONITORINFO()
         mi.cb = ctypes.sizeof(MONITORINFO)
         user32.GetMonitorInfoW(ctypes.c_void_p(hmon), ctypes.byref(mi))
-        found.append((mi.rc.r - mi.rc.l, mi.rc.b - mi.rc.t, bool(mi.flags & 1)))
+        found.append((mi.rc.r - mi.rc.l, mi.rc.b - mi.rc.t, bool(mi.flags & 1), mi.rc.l, mi.rc.t))
         return 1
 
     user32.EnumDisplayMonitors(None, None, PROC(cb), 0)
     found.sort(key=lambda m: not m[2])  # primary first, matches the capture order on most PCs
-    for i, (w, h, primary) in enumerate(found):
-        out.append({"index": i, "label": f"Display {i + 1} ({w}×{h})" + (" · main" if primary else "")})
+    for i, (w, h, primary, x, y) in enumerate(found):
+        out.append({"index": i, "label": f"Display {i + 1} ({w}×{h})" + (" · main" if primary else ""),
+                    "x": x, "y": y, "w": w, "h": h})
     return out or [{"index": 0, "label": "Display 1"}]
 
 

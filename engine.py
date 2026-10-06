@@ -568,7 +568,10 @@ class Recorder:
         self.wanted = False
         self.fails = 0
         self.has_audio = False
+        self.auto_gdi = False
+        self.capture_mode = "dda"
         self.long = None
+        self.persist = lambda key, value: None      # the app saves a working capture method here
         self.long_end_cb = None  # called when the buffer stops under a running long recording
         threading.Thread(target=self._watchdog, daemon=True).start()
         threading.Thread(target=self._health, daemon=True).start()
@@ -613,7 +616,7 @@ class Recorder:
         if not self.available:
             self.available = probe_encoders()
         self.encoder = pick_encoder(s["encoder"], self.available)
-        if self.fails >= 2 and self.encoder != "cpu":  # GPU path keeps failing: fall back
+        if self.fails >= 3 and self.encoder != "cpu":  # GPU path keeps failing: fall back
             self.log(f"{self.encoder} failed twice, falling back to CPU")
             self.encoder = "cpu"
         shutil.rmtree(self.buf, ignore_errors=True)
@@ -635,7 +638,24 @@ class Recorder:
         cmd = [FFMPEG, "-hide_banner", "-nostats", "-loglevel", "info"]
         if TEST:
             cmd += ["-re"]
-        cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target)]
+        mode = self.input_mode()
+        self.capture_mode = mode
+        if mode == "gdi" and not self.window_target and not TEST:
+            # compatibility capture: Windows' classic screen grab. Slower than Desktop Duplication, but it works on
+            # every PC, including laptops with two graphics chips and drivers that refuse the fast path
+            gfps = min(fps, 30) if self.encoder == "cpu" else fps
+            cmd += ["-f", "gdigrab", "-framerate", str(gfps), "-draw_mouse", "1"]
+            try:
+                import winbits
+                mons = winbits.monitors()
+                m = mons[int(s["monitor"])] if int(s["monitor"]) < len(mons) else mons[0]
+                if m.get("w"):
+                    cmd += ["-offset_x", str(m["x"]), "-offset_y", str(m["y"]), "-video_size", f"{m['w']}x{m['h']}"]
+            except Exception:
+                pass
+            cmd += ["-i", "desktop"]
+        else:
+            cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target)]
         if self.has_audio:
             cmd += ["-thread_queue_size", "1024", "-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
         cmd += ["-map", "0:v"] + (["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if self.has_audio else [])
@@ -665,6 +685,13 @@ class Recorder:
                 self.pump = AudioPump(self.proc.stdin.write, False, False, None, on_error=self._set_error)
                 self.pump.start()
 
+    def input_mode(self):
+        """"dda" = fast Desktop Duplication, "gdi" = compatibility capture. Automatic starts fast and falls back."""
+        pick = self.settings.get("capture_input", "")
+        if pick in ("dda", "gdi"):
+            return pick
+        return "gdi" if self.auto_gdi else "dda"
+
     def _set_error(self, msg):
         self.error = msg
         self.log(msg)
@@ -677,6 +704,10 @@ class Recorder:
             if m:
                 prev = self.order[-1][0] if self.order else None
                 self.order.append((Path(m.group(1)).name, time.monotonic()))
+                if self.auto_gdi and self.settings.get("capture_input", "") == "":
+                    self.settings["capture_input"] = "gdi"          # this PC needs compatibility capture, so start there next time
+                    self.persist("capture_input", "gdi")
+                    self.log("saved: this PC records with compatibility capture")
                 self.fails = 0
                 if self.long and prev:
                     self.long.piece_done(self.buf / prev)
@@ -797,9 +828,13 @@ class Recorder:
                     tail = [l for l in self.stderr_tail if "rror" in l or "ailed" in l] or list(self.stderr_tail)
                     self.fails += 1
                     self._set_error("Capture stopped: " + (tail[-1] if tail else f"ffmpeg exited ({self.proc.returncode})"))
+                    if self.fails == 2 and self.input_mode() == "dda" and self.settings.get("capture_input", "") == "" and not self.window_target:
+                        self.auto_gdi = True
+                        self.notice = "The fast screen capture didn't work on this PC, so Rewind is trying compatibility capture."
+                        self.log("switching to gdigrab")
                     self.state = "error"
                     self._kill()
-                    if self.fails <= 4:
+                    if self.fails <= 6:
                         time.sleep(1)
                         self._launch()
                         self.state = "buffering"
@@ -827,6 +862,7 @@ class Recorder:
             "levels": levels,
             "last_saved": self.last_saved,
             "capture": self.capture_kind,
+            "capture_mode": self.capture_mode,
             "capture_label": f"{self.window_target['name']} window" if self.window_target else "Whole screen",
             "window_capture": window_capture_supported(),
             "notice": self.notice,

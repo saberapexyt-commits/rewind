@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.4.1
+
+- **Fixes "Capture stopped: Error opening input files: Invalid argument".** If the fast screen capture can't start on a PC (some laptops, hybrid graphics, drivers that refuse it), Rewind now switches by itself to compatibility capture and remembers it. You can pick the method in Settings, under Video, Screen capture.
+- If a graphics encoder keeps failing, Rewind falls back to the processor after the capture method has been tried, instead of before.
+- Settings has a Show log file button to help work out problems.
+
 ## 1.4.0
 
 - **Editor: multiple tracks.** Put clips on top of the main video as picture-in-picture layers (move, resize, fade, set opacity), stack text on its own lanes, and run several sound tracks at once.

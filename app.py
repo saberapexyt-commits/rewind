@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.4.0"
+VERSION = "1.4.1"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -59,12 +59,12 @@ DEFAULTS = {
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
     "hotkey_bookmark": None, "share_ok": False,
     "sound": True, "sound_name": "clip", "sound_volume": "medium",
-    "capture": "auto", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
+    "capture": "auto", "capture_input": "", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
     "close_to_tray": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
-RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture"}
+RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture", "capture_input"}
 
 
 def log(msg):
@@ -102,6 +102,7 @@ class App:
                         "bookmark": winbits.Hotkey(self.add_bookmark)}
         self.hotkey = self.hotkeys["clip"]
         self.rec.long_end_cb = self.stop_long
+        self.rec.persist = lambda k, v: (self.settings.__setitem__(k, v), save_settings(self.settings))
         self.window = None
         self.tray = None
         self.events = []  # toasts for the UI: saved / failed
@@ -893,6 +894,9 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, APP.start_export(body))
             if path == "/api/editor/cancel":
                 APP.cancel_export(body.get("id", ""))
+                return self._send(200, {"ok": True})
+            if path == "/api/open-log":
+                winbits.reveal(LOG_FILE)
                 return self._send(200, {"ok": True})
             if path == "/api/long/toggle":
                 threading.Thread(target=APP.toggle_long, daemon=True).start()

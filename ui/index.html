@@ -614,6 +614,10 @@
         <select id="opt-monitor"></select>
       </div>
       <div class="set">
+        <div class="lbl"><b>Screen capture</b><small id="cap-in-note">Automatic uses the fast method and switches by itself if your PC can't.</small></div>
+        <div class="seg" id="seg-capin"></div>
+      </div>
+      <div class="set">
         <div class="lbl"><b>Frame rate</b></div>
         <div class="seg" id="seg-fps"></div>
       </div>
@@ -669,6 +673,10 @@
       <div class="set">
         <div class="lbl"><b>Keep running in the tray when closed</b><small>Closing the window keeps the buffer going. Quit from the tray icon.</small></div>
         <label class="switch"><input type="checkbox" id="opt-tray"><span></span></label>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Something not working?</b><small>Opens the log file. Send it to whoever is helping you.</small></div>
+        <button class="btn" id="openlog">Show log file</button>
       </div>
       <div class="set">
         <div class="lbl"><b>Start hidden in the tray</b><small>Useful with a startup shortcut.</small></div>
@@ -1417,6 +1425,9 @@ function renderUpdates() {
 function renderSettings() {
   if (!S) return;
   const s = S.settings, st = S.status, av = st.available || {};
+  seg("seg-capin", [["", "Automatic"], ["dda", "Fast"], ["gdi", "Compatible"]], s.capture_input || "", "capture_input");
+  $("cap-in-note").textContent = st.capture_mode === "gdi" ? "Using compatibility capture. It works on every PC but is a little heavier. Pick Fast to try the quick method again."
+    : "Automatic uses the fast method and switches by itself if your PC can't.";
   seg("seg-length", [[15, "15s"], [30, "30s"], [60, "1m"], [120, "2m"], [300, "5m"]], s.length, "length", Number);
   const gpuNames = { nvidia: "NVIDIA", amd: "AMD", intel: "Intel" };
   seg("seg-encoder", [["auto", "Automatic"],
@@ -1486,6 +1497,7 @@ function nameFor(exe) {
 }
 async function poll1() { S = await get("/api/state"); render(); }
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
+$("openlog").onclick = () => api("/api/open-log");
 $("pickfolder").onclick = () => api("/api/pick-folder").then(() => loadClips());
 
 /* ---------- hotkeys: clip, long recording, bookmark */
