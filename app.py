@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.0"
+VERSION = "1.6.1"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -78,10 +78,12 @@ def log(msg):
 
 def load_settings():
     s = dict(DEFAULTS)
-    try:
-        s.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
-    except Exception:
-        pass
+    for f in (SETTINGS_FILE, SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".bak")):
+        try:
+            s.update(json.loads(f.read_text(encoding="utf-8")))
+            break
+        except Exception:
+            continue
     if s.get("capture_input") == "gdi" and not s.get("capture_reset_154"):
         # versions 1.4.1 to 1.5.3 could lock a PC into compatibility capture after one bad start, so start again from Automatic
         s["capture_input"], s["capture_reset_154"] = "", True
@@ -106,8 +108,16 @@ def trim_log(limit=1_000_000, keep=300_000):
 
 
 def save_settings(s):
+    """Write to a temporary file and swap it in, so a crash or power cut can't leave half a settings file."""
     DATA_DIR.mkdir(parents=True, exist_ok=True)
-    SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
+    tmp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
+    tmp.write_text(json.dumps(s, indent=2), encoding="utf-8")
+    try:
+        if SETTINGS_FILE.exists():
+            shutil.copyfile(SETTINGS_FILE, SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".bak"))
+    except OSError:
+        pass
+    os.replace(tmp, SETTINGS_FILE)
 
 
 class App:
@@ -120,6 +130,7 @@ class App:
                         "bookmark": winbits.Hotkey(self.add_bookmark)}
         self.hotkey = self.hotkeys["clip"]
         self.rec.long_end_cb = self.stop_long
+        self.rec.low_disk_cb = self.low_disk_stop
         self.rec.persist = lambda k, v: (self.settings.__setitem__(k, v), save_settings(self.settings))
         self.window = None
         self.winmgr = None
@@ -136,6 +147,7 @@ class App:
         self.sound_urls = set()   # online sounds the library search returned
         self.gpus = []
         self._durations = {}
+        self._count, self._count_t = 0, 0.0
 
     def check_update(self, manual=False):
         """Look for a newer GitHub release; when running as the exe, download it in the background."""
@@ -155,10 +167,11 @@ class App:
                 self.update_status["state"] = "latest"
                 return
             asset = next((a["browser_download_url"] for a in rel.get("assets", []) if a.get("name") == "Rewind.exe"), None)
+            sha = next((a["browser_download_url"] for a in rel.get("assets", []) if a.get("name") == "Rewind.exe.sha256"), None)
             if not (self.update and self.update.get("version") == tag.lstrip("v")):
                 self.update = {"version": tag.lstrip("v"), "url": rel.get("html_url") or WEBSITE,
                                "notes": (rel.get("body") or "").strip()[:600],
-                               "ready": False, "auto": bool(asset and getattr(sys, "frozen", False)), "asset": asset}
+                               "ready": False, "auto": bool(asset and sha and getattr(sys, "frozen", False)), "asset": asset, "sha": sha}
             self.update_status["state"] = "available"
             log(f"update available: {tag}")
             if (self.update["auto"] and not self.update["ready"] and not self.update.get("downloading")
@@ -192,6 +205,20 @@ class App:
                         self.update["progress"] = int(got * 100 / total)
             if part.stat().st_size < 1_000_000:
                 raise RuntimeError("downloaded file is too small")
+            import hashlib
+            want = ""
+            try:
+                with urllib.request.urlopen(urllib.request.Request(self.update["sha"], headers={"User-Agent": "Rewind"}), timeout=30) as r:
+                    want = r.read().decode("ascii", "replace").split()[0].strip().lower()
+            except Exception as e:
+                raise RuntimeError(f"couldn't fetch the checksum: {e}")
+            h = hashlib.sha256()
+            with open(part, "rb") as f:
+                for chunk in iter(lambda: f.read(1 << 20), b""):
+                    h.update(chunk)
+            if h.hexdigest() != want:
+                part.unlink(missing_ok=True)
+                raise RuntimeError("the download doesn't match its checksum")
             part.replace(UPDATE_DIR / "Rewind-new.exe")
             self.update.update(ready=True, downloading=False, progress=100)
             log("update downloaded, ready to install")
@@ -282,6 +309,7 @@ class App:
             p = self.rec.save(folder, title=game["name"] if game else None)
             rel = p.relative_to(Path(self.settings["clips_dir"])).as_posix()
             self.events.append({"id": time.time(), "kind": "saved", "name": rel})
+            self._count_t = 0
             self.show_toast(game["name"] if game else "Screen")
             return {"ok": True, "name": rel}
         except Exception as e:
@@ -364,7 +392,8 @@ class App:
         if self.rec.long:
             return self.stop_long()
         try:
-            self.rec.start_long()
+            game = self.current_game()
+            self.rec.start_long(self.target_folder(game), game["name"] if game else (winbits.foreground_title() or "Desktop"))
         except Exception as e:
             self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
             return {"ok": False, "error": str(e)}
@@ -390,6 +419,10 @@ class App:
             self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
             return {"ok": False, "error": str(e)}
 
+    def low_disk_stop(self):
+        self.note("Recording stopped", "Your drive is almost full, so Rewind saved the recording while it still could.")
+        self.stop_long()
+
     def add_bookmark(self):
         if not self.rec.long:
             self.note("No long recording yet", "Start one first, then bookmark the moments you want to find later.")
@@ -414,7 +447,7 @@ class App:
                             "error": self.hotkeys[w].error, "mode": (self.settings.get(k) or {}).get("mode", "tap")} for w, k in HOTKEY_KEYS.items()},
             "monitors": self.monitors, "mics": self.mics,
             "events": self.events[-5:],
-            "clip_count": len(self.clip_files()),
+            "clip_count": self.clip_count(),
             "native_window": self.window is not None,
             "website": WEBSITE, "update": self.update, "update_status": self.update_status,
             "gpus": self.gpus, "encoder_notes": engine.PROBE_NOTES,
@@ -447,6 +480,13 @@ class App:
             pass
         return "\n".join(lines)
 
+    def clip_count(self):
+        """How many clips there are. Listing the folder this often (the page asks twice a second) is wasteful, so keep the answer for a few seconds."""
+        now = time.monotonic()
+        if now - self._count_t > 3.0:
+            self._count, self._count_t = len(self.clip_files()), now
+        return self._count
+
     def clip_files(self):
         d = Path(self.settings["clips_dir"])
         if not d.exists():
@@ -472,10 +512,10 @@ class App:
         except Exception:
             return []
 
-    def clips(self):
+    def clips(self, limit=400):
         d = Path(self.settings["clips_dir"])
         out = []
-        for p in sorted(self.clip_files(), key=lambda p: p.stat().st_mtime, reverse=True)[:400]:
+        for p in sorted(self.clip_files(), key=lambda p: p.stat().st_mtime, reverse=True)[:limit]:
             st = p.stat()
             out.append({"name": p.relative_to(d).as_posix(), "title": p.stem,
                         "game": p.parent.name if p.parent != d else "",
@@ -870,9 +910,18 @@ class Handler(BaseHTTPRequestHandler):
         host = self.headers.get("Host", "")
         return host in (f"127.0.0.1:{APP.port}", f"localhost:{APP.port}")
 
-    def _send(self, code, body, ctype="application/json"):
+    def _authed(self):
+        for part in (self.headers.get("Cookie") or "").split(";"):
+            k, _, v = part.strip().partition("=")
+            if k == "rw" and secrets.compare_digest(v, TOKEN):
+                return True
+        return False
+
+    def _send(self, code, body, ctype="application/json", cookie=False):
         data = body if isinstance(body, bytes) else json.dumps(body).encode()
         self.send_response(code)
+        if cookie:
+            self.send_header("Set-Cookie", f"rw={TOKEN}; Path=/; HttpOnly; SameSite=Strict")
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(data)))
         self.send_header("Cache-Control", "no-store")
@@ -886,12 +935,14 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path in ("/", "/index.html"):
                 html = UI_FILE.read_text(encoding="utf-8").replace("__TOKEN__", TOKEN)
-                return self._send(200, html.encode(), "text/html; charset=utf-8")
+                return self._send(200, html.encode(), "text/html; charset=utf-8", cookie=True)
             if path == "/logo.png" and (RES_DIR / "logo.png").exists():
                 return self._send(200, (RES_DIR / "logo.png").read_bytes(), "image/png")
             if path in ("/editor.js", "/editor.css"):
                 f = UI_FILE.parent / path[1:]
                 return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")
+            if path not in ("/logo.png", "/editor.js", "/editor.css") and not self._authed():
+                return self._send(403, {"error": "forbidden"})
             if path == "/api/editor/sounds":
                 q = parse_qs(urlparse(self.path).query)
                 return self._send(200, APP.search_sounds(q.get("q", [""])[0], q.get("kind", ["sfx"])[0], q.get("page", ["1"])[0]))
@@ -907,7 +958,11 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/state":
                 return self._send(200, APP.state())
             if path == "/api/clips":
-                return self._send(200, APP.clips())
+                try:
+                    n = int(parse_qs(urlparse(self.path).query).get("n", ["400"])[0])
+                except ValueError:
+                    n = 400
+                return self._send(200, APP.clips(max(50, min(n, 10000))))
             if path.startswith("/thumb/"):
                 p = engine.thumb_path(APP.clip_path(unquote(path[7:])))
                 if not p.exists():
@@ -954,6 +1009,8 @@ class Handler(BaseHTTPRequestHandler):
         path = urlparse(self.path).path
         n = int(self.headers.get("Content-Length") or 0)
         body = json.loads(self.rfile.read(n) or b"{}") if n else {}
+        if not path.startswith("/api/window/"):
+            APP._count_t = 0                              # anything that might add or remove clips: count again next time
         try:
             if path == "/api/save":
                 return self._send(200, APP.save_replay())
@@ -1185,6 +1242,8 @@ def main():
             return
     APP = App()
     log(f"Rewind {VERSION} starting")
+    engine.LOG_FILE = str(LOG_FILE)
+    engine.kill_stale_ffmpeg(log)
     start_server()
     h = APP.settings["hotkey"]
     for w in HOTKEY_KEYS:
@@ -1228,6 +1287,7 @@ def main():
     threading.Thread(target=APP.find_gpus, daemon=True).start()
     threading.Thread(target=APP.update_loop, daemon=True).start()
     def tidy_clips():
+        engine.recover_orphans(log)
         engine.clean_temp()
         trim_log()
         folder = APP.settings["clips_dir"]
@@ -1267,6 +1327,9 @@ def main():
 
 
 if __name__ == "__main__":
+    if "--guard" in sys.argv:                       # the helper that saves a long recording if Rewind stops unexpectedly
+        engine.guardian_main(sys.argv[sys.argv.index("--guard") + 1])
+        sys.exit(0)
     try:
         main()
     except Exception:

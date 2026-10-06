@@ -27,6 +27,12 @@ jobs:
             --add-data "ui;ui" --add-data "rewind.ico;." --add-data "logo.png;." --add-data "repo.json;." `
             --hidden-import pystray._win32 --distpath dist/Rewind app.py
 
+      - name: Checksum of the exe (the app checks it before installing an update)
+        shell: pwsh
+        run: |
+          $h = (Get-FileHash dist/Rewind/Rewind.exe -Algorithm SHA256).Hash.ToLower()
+          "$h  Rewind.exe" | Out-File -FilePath dist/Rewind/Rewind.exe.sha256 -Encoding ascii
+
       - name: Get the pinned ffmpeg (for the smoke test only, it is not shipped)
         shell: pwsh
         run: |
@@ -47,6 +53,8 @@ jobs:
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/Rewind/Rewind.exe
+          files: |
+            dist/Rewind/Rewind.exe
+            dist/Rewind/Rewind.exe.sha256
           name: Rewind ${{ github.ref_name }}
           body_path: release-notes.md

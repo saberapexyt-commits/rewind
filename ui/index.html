@@ -37,6 +37,7 @@
   :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
   /* title bar */
+  .morewrap { display: flex; justify-content: center; padding: 18px 0 8px; }
   .top { grid-area: top; display: flex; align-items: center; padding: 0 0 0 14px; position: relative; user-select: none; }
   .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14.5px; }
   .brand svg { width: 22px; height: 22px; }
@@ -927,7 +928,8 @@ function render() {
   const g = S.game;
   $("gamechip").className = "chip" + (g ? (g.focused ? " live" : " away") : "");
   $("gametext").textContent = g ? (g.focused ? `Playing ${g.name}` : `${g.name} (in the background)`) : "No game detected";
-  $("notice").textContent = [st.notice, st.audio_note].filter(Boolean).join("  ");
+  const lowDisk = st.low_disk ? `Your drive is almost full (${st.free_gb} GB left). Free up space, or saving clips and long recordings may fail.` : "";
+  $("notice").textContent = [st.notice, st.audio_note, lowDisk].filter(Boolean).join("  ");
 
   const rec = state === "buffering" || state === "saving";
   $("pill").querySelector("span").textContent = state === "buffering" ? (g && g.focused ? `Recording ${g.name}` : "Recording")
@@ -1001,8 +1003,9 @@ function toast(ev) {
 /* ---------- clips */
 let filter = "";
 const gameOf = (c) => c.game || niceTitle(c.title);
+let clipLimit = 400;
 async function loadClips() {
-  clips = await get("/api/clips");
+  clips = await get("/api/clips?n=" + clipLimit);
   const gamesList = [...new Set(clips.map(gameOf))];
   if (filter && !gamesList.includes(filter)) filter = "";
   $("filters").innerHTML = gamesList.length > 1
@@ -1041,8 +1044,10 @@ async function loadClips() {
   };
   const empty = (S ? `<div class="empty"><b>No replays yet</b>Press ${keycaps(S.hotkey_label)} during a game, or use Save replay on Home.</div>` : "");
   $("recent").innerHTML = clips.length ? grouped(clips.slice(0, 12)) : empty;
-  $("allclips").innerHTML = clips.length ? grouped(shown) : empty;
-  $("clipsub").textContent = clips.length ? `${clips.length} replay${clips.length === 1 ? "" : "s"}, newest first` : "";
+  const more = S && S.clip_count > clips.length ? S.clip_count - clips.length : 0;
+  $("allclips").innerHTML = (clips.length ? grouped(shown) : empty) + (more ? `<div class="morewrap"><button class="btn" id="moreclips">Show older clips (${more} more)</button></div>` : "");
+  if (more) $("moreclips").onclick = () => { clipLimit += 400; loadClips(); };
+  $("clipsub").textContent = clips.length ? `${clips.length}${more ? " of " + (clips.length + more) : ""} replay${clips.length === 1 ? "" : "s"}, newest first` : "";
   for (const n of [...sel]) if (!clips.some((c) => c.name === n)) sel.delete(n);
   document.querySelectorAll(".clip").forEach((el) => {
     el.addEventListener("click", (e) => { if (sel.size || e.ctrlKey || e.metaKey) toggleSel(el.dataset.name); else openPlayer(el.dataset.name); });

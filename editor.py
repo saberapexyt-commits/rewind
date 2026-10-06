@@ -464,6 +464,7 @@ def run_job(job, project, resolve, out_path, enc_for, height_cap, log=print):
             cmd, total, workdir = build(project, resolve, part, enc_args, height_cap)
             job.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                                         creationflags=engine.NO_WINDOW, stdin=subprocess.DEVNULL)
+            engine.bind_to_app(job.proc)
             errs = []
 
             def drain():

@@ -133,6 +133,88 @@ def run(cmd, timeout=60):
                           creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
 
 
+LOG_FILE = None          # set by the app, so a helper process can write to the same log
+
+
+def free_bytes(path):
+    p = Path(path or ".")
+    while not p.exists() and p.parent != p:
+        p = p.parent
+    try:
+        return shutil.disk_usage(p).free
+    except OSError:
+        return 1 << 60
+
+
+_job = None
+
+
+def bind_to_app(proc):
+    """Make a child process (ffmpeg) die with Rewind, however Rewind ends: a crash, End Task, a power button."""
+    global _job
+    if not IS_WIN:
+        return
+    try:
+        import ctypes
+        from ctypes import wintypes as w
+        k = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        class BASIC(ctypes.Structure):
+            _fields_ = [("a", ctypes.c_int64), ("b", ctypes.c_int64), ("LimitFlags", w.DWORD), ("c", ctypes.c_size_t), ("d", ctypes.c_size_t),
+                        ("e", w.DWORD), ("f", ctypes.c_size_t), ("g", w.DWORD), ("h", w.DWORD)]
+
+        class EXT(ctypes.Structure):
+            _fields_ = [("Basic", BASIC), ("io", ctypes.c_uint64 * 6), ("p1", ctypes.c_size_t), ("p2", ctypes.c_size_t),
+                        ("p3", ctypes.c_size_t), ("p4", ctypes.c_size_t)]
+        k.CreateJobObjectW.restype = w.HANDLE
+        k.SetInformationJobObject.argtypes = [w.HANDLE, ctypes.c_int, ctypes.c_void_p, w.DWORD]
+        k.AssignProcessToJobObject.argtypes = [w.HANDLE, w.HANDLE]
+        if _job is None:
+            job = k.CreateJobObjectW(None, None)
+            info = EXT()
+            info.Basic.LimitFlags = 0x2000                       # JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+            k.SetInformationJobObject(job, 9, ctypes.byref(info), ctypes.sizeof(info))
+            _job = job
+        k.AssignProcessToJobObject(_job, int(proc._handle))
+    except Exception:
+        pass
+
+
+def pid_alive(pid):
+    if not IS_WIN:
+        return False
+    try:
+        import ctypes
+        k = ctypes.WinDLL("kernel32")
+        k.OpenProcess.restype = ctypes.c_void_p
+        k.OpenProcess.argtypes = [ctypes.c_ulong, ctypes.c_int, ctypes.c_ulong]
+        k.GetExitCodeProcess.argtypes = [ctypes.c_void_p, ctypes.POINTER(ctypes.c_ulong)]
+        k.CloseHandle.argtypes = [ctypes.c_void_p]
+        h = k.OpenProcess(0x1000, False, int(pid))
+        if not h:
+            return False
+        code = ctypes.c_ulong()
+        k.GetExitCodeProcess(h, ctypes.byref(code))
+        k.CloseHandle(h)
+        return code.value == 259
+    except Exception:
+        return False
+
+
+def kill_stale_ffmpeg(log=print):
+    """A recorder left running by a Rewind that crashed or was force closed before this version."""
+    if not IS_WIN or TEST:
+        return
+    try:
+        r = run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                 "Get-CimInstance Win32_Process -Filter \"Name='ffmpeg.exe'\" | Where-Object { $_.CommandLine -like '*rewind-buffer*' } | "
+                 "ForEach-Object { Stop-Process -Id $_.ProcessId -Force; $_.ProcessId }"], timeout=15)
+        if r.stdout.strip():
+            log("stopped a leftover recorder: " + " ".join(r.stdout.split()))
+    except Exception as e:
+        log(f"leftover recorder check failed: {e}")
+
+
 def duration_of(path):
     r = run([FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)])
     try:
@@ -475,7 +557,11 @@ class AudioPump(threading.Thread):
                     if spk["name"] in lb["name"]:
                         spk = lb
                         break
-            self.sources.append(WasapiCapture(pa_mod, self.pa, spk))
+            self.desk = WasapiCapture(pa_mod, self.pa, spk)
+            self.sources.append(self.desk)
+            self.out_name = self.pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
+            self.spare_pa = None
+            threading.Thread(target=self._follow_output, args=(pa_mod,), daemon=True).start()
         self.mic_error = ""
         if mic:
           try:
@@ -529,10 +615,51 @@ class AudioPump(threading.Thread):
         except Exception as e:
             self.on_error(f"Audio stopped: {e}")
 
+    def _follow_output(self, pa_mod):
+        """Headphones plugged in, output switched: move the game sound capture to the new default output."""
+        while self.alive:
+            time.sleep(3)
+            fresh = None
+            try:
+                fresh = pa_mod.PyAudio()
+                api = fresh.get_host_api_info_by_type(pa_mod.paWASAPI)
+                out = fresh.get_device_info_by_index(api["defaultOutputDevice"])
+                if out["name"] == self.out_name:
+                    fresh.terminate()
+                    continue
+                spk = out
+                if not spk.get("isLoopbackDevice"):
+                    for lb in fresh.get_loopback_device_info_generator():
+                        if spk["name"] in lb["name"]:
+                            spk = lb
+                            break
+                cap = WasapiCapture(pa_mod, fresh, spk)
+                old, old_pa = self.desk, self.spare_pa
+                self.sources = [cap if s is old else s for s in self.sources]
+                self.desk, self.spare_pa, self.out_name = cap, fresh, out["name"]
+                fresh = None
+                old.close()
+                if old_pa:
+                    old_pa.terminate()
+                self.output_changed = out["name"]
+            except Exception:
+                pass
+            finally:
+                if fresh is not None:
+                    try:
+                        fresh.terminate()
+                    except Exception:
+                        pass
+
     def stop(self):
         self.alive = False
         for s in self.sources:
             s.close()
+        if getattr(self, "spare_pa", None):
+            try:
+                self.spare_pa.terminate()
+            except Exception:
+                pass
         if self.pa:
             try:
                 self.pa.terminate()
@@ -566,19 +693,62 @@ def is_black(stats):
     return stats is not None and stats[1] < 2.5 and stats[0] < 40
 
 
+def _join_long(d, final, log, max_len):
+    """Join the kept 2 second pieces into `final`. The result is checked before it is kept."""
+    d, final = Path(d), Path(final)
+    pieces = sorted(d.glob("*.ts"))
+    if not pieces:
+        raise RuntimeError("Nothing was recorded.")
+    lst = d / "list.txt"
+    lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in pieces), encoding="utf-8")
+    part = final.with_name(final.stem + ".part")
+    final.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                 "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=7200)
+        if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
+            raise RuntimeError("Couldn't join the recording: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
+        seal(part, final, max_len, log)
+    finally:
+        try:
+            part.unlink()
+        except OSError:
+            pass
+
+
 class LongRecording:
     """A full-length recording made from the same buffer: each 2 second piece is copied aside as soon as
-    ffmpeg finishes it, and the pieces are joined (no re-encode) when the recording stops."""
+    ffmpeg finishes it, and the pieces are joined (no re-encode) when the recording stops.
 
-    def __init__(self, started_at, log):
+    A small helper process watches over it: if Rewind crashes or is force closed, the helper joins what was
+    recorded and saves it, so a long recording is never lost."""
+
+    def __init__(self, started_at, log, folder=None, title="Desktop"):
         self.dir = Path(tempfile.mkdtemp(prefix="rewind-long-"))
         self.t0 = started_at
         self.log = log
         self.n = 0
         self.bookmarks = []
+        self.guard = None
         self.q = queue.Queue()
         self.worker = threading.Thread(target=self._run, daemon=True)
         self.worker.start()
+        if folder is not None and not TEST:
+            self._start_guard(Path(folder), title)
+
+    def _start_guard(self, folder, title):
+        try:
+            stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+            info = {"pid": os.getpid(), "ffmpeg": FFMPEG, "ffprobe": FFPROBE, "log": str(LOG_FILE or ""),
+                    "final": str(folder / f"{safe_name(title)} recording {stamp} (recovered).mp4")}
+            (self.dir / "guard.json").write_text(json.dumps(info), encoding="utf-8")
+            frozen = getattr(sys, "frozen", False)
+            cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).with_name("app.py"))]) + ["--guard", str(self.dir)]
+            env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI") and k != "_MEIPASS2"}
+            self.guard = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                          creationflags=NO_WINDOW | 0x8 | 0x200, env=env, close_fds=True)
+        except Exception as e:
+            self.log(f"couldn't start the recording guard: {e}")
 
     def _run(self):
         while True:
@@ -601,7 +771,19 @@ class LongRecording:
     def bookmark(self):
         t = round(self.elapsed(), 1)
         self.bookmarks.append(t)
+        try:
+            (self.dir / "bookmarks.json").write_text(json.dumps(self.bookmarks), encoding="utf-8")
+        except OSError:
+            pass
         return t
+
+    def _stop_guard(self):
+        if self.guard:
+            try:
+                self.guard.terminate()
+            except Exception:
+                pass
+            self.guard = None
 
     def finish(self, last_piece, final):
         """Join everything into `final` (an .mp4 path). Returns the bookmark list."""
@@ -609,30 +791,99 @@ class LongRecording:
             self.q.put(last_piece)
         self.q.put(None)
         self.worker.join(60)
-        pieces = sorted(self.dir.glob("*.ts"))
         try:
-            if not pieces:
-                raise RuntimeError("Nothing was recorded.")
-            lst = self.dir / "list.txt"
-            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in pieces), encoding="utf-8")
-            part = final.with_name(final.stem + ".part")
-            final.parent.mkdir(parents=True, exist_ok=True)
-            r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                     "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=7200)
-            if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
-                raise RuntimeError("Couldn't join the recording: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
-            seal(part, final, self.elapsed() + 60, self.log)
+            (self.dir / "claimed").write_text("finishing", encoding="utf-8")      # the helper must not also save it
+        except OSError:
+            pass
+        try:
+            _join_long(self.dir, final, self.log, self.elapsed() + 60)
         finally:
+            self._stop_guard()
             shutil.rmtree(self.dir, ignore_errors=True)
-            try:
-                part.unlink()
-            except (OSError, UnboundLocalError):
-                pass
         return self.bookmarks
 
     def discard(self):
         self.q.put(None)
+        self._stop_guard()
         shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def recover_long(d, log):
+    """Save what a long recording had captured when Rewind stopped without finishing it."""
+    d = Path(d)
+    try:
+        info = json.loads((d / "guard.json").read_text(encoding="utf-8"))
+        with open(d / "claimed", "x") as f:
+            f.write("recovering")
+    except (OSError, ValueError):
+        return None                                  # no recording here, or someone else is already saving it
+    final = Path(info["final"])
+    n = 2
+    while final.exists():
+        final = final.with_name(f"{Path(info['final']).stem} {n}.mp4")
+        n += 1
+    try:
+        pieces = len(list(d.glob("*.ts")))
+        _join_long(d, final, log, pieces * SEG + 120)
+        try:
+            marks = json.loads((d / "bookmarks.json").read_text(encoding="utf-8"))
+            if marks:
+                b = bookmarks_path(final)
+                b.parent.mkdir(exist_ok=True)
+                b.write_text(json.dumps(marks), encoding="utf-8")
+        except (OSError, ValueError):
+            pass
+        make_thumb(final)
+        log(f"recovered the recording that was in progress: {final}")
+        return final
+    except Exception as e:
+        log(f"couldn't recover the recording: {e}")
+        return None
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def recover_orphans(log):
+    """At startup: recordings whose Rewind is gone and that nobody has saved yet."""
+    try:
+        for d in Path(tempfile.gettempdir()).glob("rewind-long-*"):
+            try:
+                info = json.loads((d / "guard.json").read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                continue
+            if info.get("pid") != os.getpid() and not pid_alive(info.get("pid", 0)) and not (d / "claimed").exists():
+                recover_long(d, log)
+    except OSError:
+        pass
+
+
+def guardian_main(dirpath):
+    """Runs as its own tiny process while a long recording is going. Waits for Rewind to end and, if the recording
+    wasn't finished normally, saves it."""
+    global FFMPEG, FFPROBE, LOG_FILE
+    d = Path(dirpath)
+    try:
+        info = json.loads((d / "guard.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return
+    FFMPEG, FFPROBE, LOG_FILE = info["ffmpeg"], info["ffprobe"], info.get("log")
+
+    def log(msg):
+        try:
+            if LOG_FILE:
+                with open(LOG_FILE, "a", encoding="utf-8") as f:
+                    f.write(f"{datetime.now():%Y-%m-%d %H:%M:%S}  {msg}\n")
+        except OSError:
+            pass
+    while pid_alive(info["pid"]):
+        if not d.exists() or (d / "claimed").exists():
+            return
+        time.sleep(1.5)
+    if not d.exists():
+        return
+    time.sleep(1.5)
+    log("Rewind stopped during a recording, saving it")
+    recover_long(d, log)
 
 
 def bookmarks_path(video):
@@ -672,6 +923,8 @@ class Recorder:
         self.long = None
         self.persist = lambda key, value: None      # the app saves a working capture method here
         self.long_end_cb = None  # called when the buffer stops under a running long recording
+        self.low_disk_cb = None  # called when a long recording has to stop because the drive is nearly full
+        self.low_disk, self.free_gb, self._low_stopping = False, 0.0, False
         threading.Thread(target=self._watchdog, daemon=True).start()
         threading.Thread(target=self._health, daemon=True).start()
 
@@ -771,6 +1024,7 @@ class Recorder:
         self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE if self.has_audio else subprocess.DEVNULL,
                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                      creationflags=NO_WINDOW, bufsize=0)
+        bind_to_app(self.proc)
         self.started_at = time.monotonic()
         self.state = "buffering"
         if not self.has_audio or "Audio library" not in self.error:
@@ -837,13 +1091,15 @@ class Recorder:
             self.proc = None
 
     # ---- long recording
-    def start_long(self):
+    def start_long(self, folder=None, title="Desktop"):
         with self.lock:
             if self.long:
                 return False
             if self.state != "buffering" or not self.order:
                 raise RuntimeError("Rewind isn't recording yet. Wait a moment and try again.")
-            self.long = LongRecording(self.order[-1][1], self.log)
+            if free_bytes(tempfile.gettempdir()) < 2e9:
+                raise RuntimeError("Your drive is almost full, so a long recording wouldn't fit. Free up some space first.")
+            self.long = LongRecording(self.order[-1][1], self.log, folder, title)
             self.log("long recording started")
             return True
 
@@ -882,6 +1138,7 @@ class Recorder:
         while True:
             time.sleep(4)
             try:
+                self._disk_check()
                 if self.state != "buffering" or len(self.order) < 2:
                     continue
                 seg = self.buf / self.order[-2][0]
@@ -914,6 +1171,15 @@ class Recorder:
                                                     ", or update ffmpeg so Rewind can record the game window") + ".")
             except Exception as e:
                 self.log(f"health check: {e}")
+
+    def _disk_check(self):
+        free = min(free_bytes(tempfile.gettempdir()), free_bytes(self.settings.get("clips_dir")))
+        self.free_gb = round(free / 1e9, 1)
+        self.low_disk = free < 5e9
+        if self.long and free < 1.5e9 and self.low_disk_cb and not self._low_stopping:
+            self._low_stopping = True
+            self.log(f"drive almost full ({self.free_gb} GB left), finishing the long recording")
+            threading.Thread(target=lambda: (self.low_disk_cb(), setattr(self, "_low_stopping", False)), daemon=True).start()
 
     def restart(self):
         with self.lock:
@@ -975,6 +1241,7 @@ class Recorder:
             "capture": self.capture_kind,
             "capture_mode": self.capture_mode,
             "audio_note": self.audio_note,
+            "low_disk": self.low_disk, "free_gb": self.free_gb,
             "capture_label": f"{self.window_target['name']} window" if self.window_target else "Whole screen",
             "window_capture": window_capture_supported(),
             "notice": self.notice,
@@ -1011,6 +1278,8 @@ class Recorder:
             raise RuntimeError("Nothing to save yet. The buffer is empty.")
 
         clips_dir.mkdir(parents=True, exist_ok=True)
+        if free_bytes(clips_dir) < 300e6:
+            raise RuntimeError("Your drive is almost full, so the clip couldn't be saved. Free up some space and try again.")
         title = safe_name(title or self.title_fn())
         stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
         final = clips_dir / f"{title} {stamp}.mp4"
