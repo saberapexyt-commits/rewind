@@ -1,0 +1,68 @@
+name: Build Rewind.exe
+
+# Runs when publish.py tags a new version (v1.0.0, v1.0.1, ...), or by hand from the Actions tab.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write   # lets the workflow create the GitHub Release
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Build Rewind.exe
+        shell: pwsh
+        run: |
+          pip install -r requirements.txt pyinstaller
+          pyinstaller --noconfirm --hidden-import games --onefile --noconsole --name Rewind --icon rewind.ico `
+            --add-data "ui;ui" --add-data "rewind.ico;." --add-data "logo.png;." --add-data "repo.json;." `
+            --hidden-import pystray._win32 --distpath dist/Rewind app.py
+
+      - name: Add ffmpeg next to the exe
+        shell: pwsh
+        run: |
+          # BtbN builds include ddagrab (screen capture) plus NVENC, AMF and Quick Sync
+          Invoke-WebRequest "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip" -OutFile ffmpeg.zip
+          Expand-Archive ffmpeg.zip -DestinationPath ffmpeg
+          $bin = Get-ChildItem -Recurse ffmpeg -Filter ffmpeg.exe | Select-Object -First 1
+          Copy-Item $bin.FullName dist/Rewind/
+          Copy-Item (Join-Path $bin.DirectoryName "ffprobe.exe") dist/Rewind/
+
+      - name: Smoke test (ffmpeg can see the GPU encoders and screen capture)
+        shell: pwsh
+        run: |
+          dist/Rewind/ffmpeg.exe -hide_banner -filters | Select-String ddagrab
+          dist/Rewind/ffmpeg.exe -hide_banner -encoders | Select-String "nvenc|amf|qsv"
+          # window capture (the black-clip fix) needs the gfxcapture filter, in ffmpeg 8+
+          dist/Rewind/ffmpeg.exe -hide_banner -h filter=gfxcapture | Select-Object -First 25
+
+      - name: Zip it
+        shell: pwsh
+        run: Compress-Archive -Path dist/Rewind/* -DestinationPath Rewind-windows.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Rewind-windows
+          path: dist/Rewind/
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            Rewind-windows.zip
+            dist/Rewind/Rewind.exe
+          name: Rewind ${{ github.ref_name }}
+          body: |
+            Download **Rewind-windows.zip**, unzip it anywhere, and run `Rewind.exe`.
+            Keep `ffmpeg.exe` and `ffprobe.exe` in the same folder.
+            Already installed? Rewind updates itself: it downloads `Rewind.exe` in the background and offers a one-click restart.

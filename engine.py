@@ -1,0 +1,773 @@
+"""Rewind engine: keeps the last N seconds of your screen + audio on disk and saves them on demand.
+
+How it works
+- ffmpeg captures the screen (Windows Desktop Duplication, `ddagrab`) and encodes on the GPU.
+- Output goes to a ring of short .ts segments that overwrite themselves (the "buffer").
+- Desktop audio (WASAPI loopback) and the mic are mixed in Python and piped into the same ffmpeg.
+- Saving copies the newest segments into one .mp4 with no re-encode, so it takes about a second.
+"""
+import math
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import threading
+import time
+from collections import deque
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+
+IS_WIN = os.name == "nt"
+TEST = os.environ.get("REWIND_TEST") == "1"  # fake screen + audio, for testing off Windows
+NO_WINDOW = 0x08000000 if IS_WIN else 0
+SEG = 2  # seconds per buffer segment
+RATE = 48000
+
+APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
+
+
+def ffbin(name):
+    for c in (APP_DIR / f"{name}.exe", APP_DIR / name):
+        if c.exists():
+            return str(c)
+    return shutil.which(name) or name
+
+
+FFMPEG, FFPROBE = ffbin("ffmpeg"), ffbin("ffprobe")
+
+
+def run(cmd, timeout=60):
+    return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout,
+                          creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
+
+
+def duration_of(path):
+    r = run([FFPROBE, "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)])
+    try:
+        return float(r.stdout.strip())
+    except ValueError:
+        return 0.0
+
+
+# ---------------------------------------------------------------- encoders
+
+ENCODERS = {
+    "nvidia": ("h264_nvenc", "NVIDIA NVENC"),
+    "amd": ("h264_amf", "AMD AMF"),
+    "intel": ("h264_qsv", "Intel Quick Sync"),
+    "cpu": ("libx264", "CPU (x264)"),
+}
+QUALITY = {"small": 30, "balanced": 25, "best": 20}
+
+
+def probe_encoders():
+    ok = {}
+    for key, (codec, _) in ENCODERS.items():
+        if key == "cpu" or TEST:
+            ok[key] = key == "cpu"
+            continue
+        try:
+            r = run([FFMPEG, "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=black:s=640x360:d=0.3",
+                     "-pix_fmt", "nv12", "-c:v", codec, "-f", "null", "-"], timeout=25)
+            ok[key] = r.returncode == 0
+        except Exception:
+            ok[key] = False
+    return ok
+
+
+def pick_encoder(choice, available):
+    if choice != "auto" and available.get(choice):
+        return choice
+    for k in ("nvidia", "amd", "intel"):
+        if available.get(k):
+            return k
+    return "cpu"
+
+
+def video_args(enc, quality, fps):
+    q = QUALITY.get(quality, 25)
+    gop = ["-g", str(fps * SEG), "-force_key_frames", f"expr:gte(t,n_forced*{SEG})"]
+    if enc == "nvidia":
+        a = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", str(q), "-b:v", "0"]
+    elif enc == "amd":
+        a = ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", str(q), "-qp_p", str(q + 2)]
+    elif enc == "intel":
+        a = ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", str(q)]
+    else:
+        a = ["-c:v", "libx264", "-preset", "ultrafast" if fps > 30 else "veryfast", "-crf", str(q),
+             "-pix_fmt", "yuv420p"]
+    return a + gop
+
+
+_filter_opts = {}
+
+
+def filter_options(name):
+    """Option names a filter supports in the bundled ffmpeg (empty set if the filter is missing)."""
+    if name not in _filter_opts:
+        opts = set()
+        try:
+            r = run([FFMPEG, "-hide_banner", "-h", f"filter={name}"], timeout=15)
+            if "Unknown filter" not in r.stdout + r.stderr:
+                opts = set(re.findall(r"^\s{2,4}([a-z_0-9]+)\s+<", r.stdout, re.M)) or {"_present"}
+        except Exception:
+            pass
+        _filter_opts[name] = opts
+    return _filter_opts[name]
+
+
+def window_capture_supported():
+    return TEST or bool(filter_options("gfxcapture"))
+
+
+def _gpu_tail(enc):
+    if enc == "intel":
+        return ",hwmap=derive_device=qsv,format=qsv"
+    if enc == "cpu":
+        return ",hwdownload,format=bgra"
+    return ""  # NVENC and AMF take the GPU frames directly
+
+
+def capture_graph(enc, monitor, fps, window=None):
+    """Screen capture (Desktop Duplication), or one game's window (Windows Graphics Capture).
+
+    Window capture is the fix for black clips: some fullscreen games and laptops with two
+    graphics chips block Desktop Duplication, but still allow capturing the game's window."""
+    if TEST:
+        src = os.environ.get("REWIND_TEST_WINDOW_SRC" if window else "REWIND_TEST_SRC", "testsrc2=size=1280x720")
+        return f"{src}:rate={fps}" if "rate=" not in src else src
+    if window:
+        o = filter_options("gfxcapture")
+        parts = []
+        if "hwnd" in o:
+            parts.append(f"hwnd={int(window['hwnd'])}")
+        elif "window_exe" in o:
+            parts.append(f"window_exe={re.escape(window['exe'])}")
+        for key, val in (("max_framerate", fps), ("capture_cursor", 1), ("display_border", 0),
+                         ("capture_border", 0), ("resize_mode", "scale")):
+            if key in o:
+                parts.append(f"{key}={val}")
+        g = "gfxcapture=" + ":".join(parts)
+        g += f",fps={fps}"  # windows only send frames when they change; keep a steady rate
+        return g + _gpu_tail(enc)
+    o = filter_options("ddagrab")
+    g = f"ddagrab=output_idx={monitor}:framerate={fps}:draw_mouse=1"
+    if "output_fmt" in o:
+        g += ":output_fmt=bgra"  # 8-bit: HDR desktops otherwise come out washed out or black
+    return g + _gpu_tail(enc)
+
+
+# ---------------------------------------------------------------- audio
+
+class Capture:
+    """One audio input, resampled to 48 kHz stereo float. Holds a small queue of frames."""
+
+    def __init__(self, gain=1.0):
+        self.q = deque()
+        self.n = 0
+        self.lock = threading.Lock()
+        self.gain = gain
+
+    def push(self, frames):  # float32 (n, 2) at RATE
+        with self.lock:
+            self.q.append(frames)
+            self.n += len(frames)
+
+    def take(self, n):
+        out = np.zeros((n, 2), np.float32)
+        with self.lock:
+            # if we fell behind (or the device runs fast), drop the oldest audio to stay in sync
+            excess = self.n - n - int(0.25 * RATE)
+            while excess > 0 and self.q:
+                c = self.q[0]
+                if len(c) <= excess:
+                    self.q.popleft(); self.n -= len(c); excess -= len(c)
+                else:
+                    self.q[0] = c[excess:]; self.n -= excess; excess = 0
+            got = 0
+            while got < n and self.q:
+                c = self.q[0]
+                k = min(n - got, len(c))
+                out[got:got + k] = c[:k]
+                if k == len(c):
+                    self.q.popleft()
+                else:
+                    self.q[0] = c[k:]
+                self.n -= k
+                got += k
+        return out * self.gain
+
+    def close(self):
+        pass
+
+
+class Resampler:
+    """Continuous linear resampler. Keeps its position between chunks, so chunk edges
+    don't click (resampling each chunk on its own causes tiny crackles)."""
+
+    def __init__(self, src, dst=RATE):
+        self.step = src / dst
+        self.pos = 0.0
+        self.prev = None
+
+    def __call__(self, a):
+        if self.step == 1.0 or not len(a):
+            return a
+        buf = a if self.prev is None else np.vstack([self.prev, a])
+        last = len(buf) - 1
+        if last < 1:
+            self.prev = buf
+            return np.zeros((0, 2), np.float32)
+        idx = np.arange(self.pos, last, self.step)
+        i0 = idx.astype(np.int64)
+        frac = (idx - i0)[:, None].astype(np.float32)
+        out = buf[i0] * (1 - frac) + buf[i0 + 1] * frac
+        self.pos = (idx[-1] + self.step) - last if len(idx) else self.pos - last
+        self.prev = buf[-1:]
+        return out.astype(np.float32)
+
+
+def to_stereo(raw, channels):
+    a = np.frombuffer(raw, np.int16).astype(np.float32) / 32768.0
+    a = a.reshape(-1, channels)
+    if channels == 1:
+        return np.repeat(a, 2, axis=1)
+    if channels >= 6:  # 5.1 / 7.1: fold centre and surrounds into stereo instead of dropping them
+        l = a[:, 0] + 0.707 * a[:, 2] + 0.5 * a[:, 4]
+        r = a[:, 1] + 0.707 * a[:, 2] + 0.5 * a[:, 5]
+        return (np.stack([l, r], axis=1) / 1.6).astype(np.float32)
+    return a[:, :2]
+
+
+def soft_limit(x, knee=0.85):
+    """Gentle limiter: leaves normal audio alone and rounds off peaks instead of hard clipping."""
+    ax = np.abs(x)
+    over = ax > knee
+    if over.any():
+        x[over] = np.sign(x[over]) * (knee + (1 - knee) * np.tanh((ax[over] - knee) / (1 - knee)))
+    return x
+
+
+class WasapiCapture(Capture):
+    def __init__(self, pa_mod, pa, info, gain=1.0):
+        super().__init__(gain)
+        ch = max(1, min(int(info["maxInputChannels"]), 8))
+        rate = int(info["defaultSampleRate"])
+        resample = Resampler(rate)
+
+        def cb(data, frames, t, status):
+            self.push(resample(to_stereo(data, ch)))
+            return (None, pa_mod.paContinue)
+
+        self.stream = pa.open(format=pa_mod.paInt16, channels=ch, rate=rate, input=True,
+                              input_device_index=info["index"], frames_per_buffer=int(rate / 50),
+                              stream_callback=cb)
+        self.stream.start_stream()
+
+    def close(self):
+        try:
+            self.stream.stop_stream(); self.stream.close()
+        except Exception:
+            pass
+
+
+class ToneCapture(Capture):
+    """Test stand-in: a beep every second, so saved clips have audible, checkable audio."""
+
+    def __init__(self):
+        super().__init__()
+        self.alive = True
+        threading.Thread(target=self._run, daemon=True).start()
+
+    def _run(self):
+        t = 0
+        while self.alive:
+            n = RATE // 50
+            idx = np.arange(t, t + n)
+            sec = idx / RATE
+            env = 0.12 + 0.5 * np.abs(np.sin(sec * 1.3) * np.sin(sec * 3.7 + 1)) ** 3
+            s = (env * np.sin(2 * np.pi * 220 * sec) * (0.6 + 0.4 * np.sin(sec * 9))).astype(np.float32)
+            self.push(np.stack([s, s], axis=1))
+            t += n
+            time.sleep(0.02)
+
+    def close(self):
+        self.alive = False
+
+
+def audio_devices():
+    """Microphones the user can pick. Empty list if the audio library isn't installed."""
+    if TEST:
+        return [{"id": "test-mic", "name": "Test microphone"}]
+    try:
+        import pyaudiowpatch as pa_mod
+    except ImportError:
+        return []
+    pa = pa_mod.PyAudio()
+    try:
+        api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
+        out = []
+        for i in range(api["deviceCount"]):
+            d = pa.get_device_info_by_host_api_device_index(api["index"], i)
+            if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice"):
+                out.append({"id": d["name"], "name": d["name"]})
+        return out
+    finally:
+        pa.terminate()
+
+
+class AudioPump(threading.Thread):
+    """Writes a steady real-time 48 kHz stream to ffmpeg, filling silence with zeros.
+
+    Loopback capture goes quiet when nothing is playing, so without this pump
+    the audio would drift out of sync with the video."""
+
+    def __init__(self, write, desktop, mic, mic_name, on_error):
+        super().__init__(daemon=True)
+        self.write, self.on_error = write, on_error
+        self.alive = True
+        self.levels = deque(maxlen=300 * 4)  # one peak value per 0.25 s
+        self.sources, self.pa = [], None
+        if TEST:
+            if desktop:
+                self.sources.append(ToneCapture())
+            return
+        import pyaudiowpatch as pa_mod
+        self.pa = pa_mod.PyAudio()
+        api = self.pa.get_host_api_info_by_type(pa_mod.paWASAPI)
+        if desktop:
+            spk = self.pa.get_device_info_by_index(api["defaultOutputDevice"])
+            if not spk.get("isLoopbackDevice"):
+                for lb in self.pa.get_loopback_device_info_generator():
+                    if spk["name"] in lb["name"]:
+                        spk = lb
+                        break
+            self.sources.append(WasapiCapture(pa_mod, self.pa, spk))
+        if mic:
+            dev = None
+            for i in range(api["deviceCount"]):
+                d = self.pa.get_device_info_by_host_api_device_index(api["index"], i)
+                if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice") and d["name"] == mic_name:
+                    dev = d
+            dev = dev or self.pa.get_device_info_by_index(api["defaultInputDevice"])
+            self.sources.append(WasapiCapture(pa_mod, self.pa, dev, gain=1.2))
+
+    def run(self):
+        t0, written, acc_peak, acc_n = time.monotonic(), 0, 0.0, 0
+        try:
+            while self.alive:
+                time.sleep(0.01)
+                n = int((time.monotonic() - t0) * RATE) - written
+                if n <= 0:
+                    continue
+                mix = np.zeros((n, 2), np.float32)
+                for s in self.sources:
+                    mix += s.take(n)
+                soft_limit(mix)
+                acc_peak = max(acc_peak, float(np.abs(mix).max()) if n else 0.0)
+                acc_n += n
+                if acc_n >= RATE // 4:
+                    self.levels.append(round(acc_peak, 3))
+                    acc_peak, acc_n = 0.0, 0
+                self.write((mix * 32767).astype(np.int16).tobytes())
+                written += n
+        except (BrokenPipeError, OSError, ValueError):
+            pass
+        except Exception as e:
+            self.on_error(f"Audio stopped: {e}")
+
+    def stop(self):
+        self.alive = False
+        for s in self.sources:
+            s.close()
+        if self.pa:
+            try:
+                self.pa.terminate()
+            except Exception:
+                pass
+
+
+# ---------------------------------------------------------------- recorder
+
+def safe_name(s):
+    s = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "", s).strip(" .")
+    return s[:60] or "Desktop"
+
+
+def frame_stats(path):
+    """(mean, spread) brightness of one tiny grey frame from a buffer piece, or None."""
+    try:
+        r = subprocess.run([FFMPEG, "-v", "error", "-i", str(path), "-frames:v", "1",
+                            "-vf", "scale=64:36,format=gray", "-f", "rawvideo", "-"],
+                           capture_output=True, timeout=20, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
+        a = np.frombuffer(r.stdout, np.uint8)
+        if a.size < 64 * 36:
+            return None
+        return float(a.mean()), float(a.std())
+    except Exception:
+        return None
+
+
+def is_black(stats):
+    # a flat, dark frame. Real dark scenes still have a HUD, text or noise, so they have spread.
+    return stats is not None and stats[1] < 2.5 and stats[0] < 40
+
+
+class Recorder:
+    def __init__(self, settings, log=print, title_fn=lambda: "Desktop", game_fn=lambda: None,
+                 remember_window_game=lambda exe: None):
+        self.settings = settings
+        self.log, self.title_fn = log, title_fn
+        self.game_fn, self.remember_window_game = game_fn, remember_window_game
+        self.window_target = None
+        self.capture_kind = "screen"
+        self.notice = ""
+        self.dark_streak = 0
+        self.last_check = None
+        self.buf = Path(tempfile.gettempdir()) / "rewind-buffer"
+        self.proc = None
+        self.pump = None
+        self.order = deque(maxlen=400)  # segment names in the order ffmpeg opened them
+        self.lock = threading.RLock()
+        self.save_lock = threading.Lock()
+        self.state, self.error = "starting", ""
+        self.started_at = 0.0
+        self.encoder = "cpu"
+        self.available = {}
+        self.stderr_tail = deque(maxlen=30)
+        self.last_saved = None
+        self.saving = False
+        self.wanted = False
+        self.fails = 0
+        self.has_audio = False
+        threading.Thread(target=self._watchdog, daemon=True).start()
+        threading.Thread(target=self._health, daemon=True).start()
+
+    # ---- lifecycle
+    def start(self):
+        with self.lock:
+            self.wanted = True
+            self._launch()
+
+    def wants_window(self, game):
+        """Should this game be recorded through its window instead of the screen?"""
+        s = self.settings
+        if not game or not window_capture_supported():
+            return False
+        mode = s.get("capture", "auto")
+        if mode == "window":
+            return True
+        return mode == "auto" and game["exe"].lower() in {e.lower() for e in s.get("window_games", [])}
+
+    def game_changed(self, game):
+        """Called by the game watcher. Retargets window capture when the game starts or stops."""
+        with self.lock:
+            if not self.wanted:
+                return
+            if not game:
+                self.notice = ""
+            if self.capture_kind == "window":
+                if not game or game["hwnd"] != self.window_target["hwnd"]:
+                    self.log("game window gone or changed, retargeting capture")
+                    self._kill(); self._launch()
+            elif self.wants_window(game):
+                self.log(f"switching to window capture for {game['name']}")
+                self._kill(); self._launch()
+
+    def _launch(self):
+        s = self.settings
+        game = self.game_fn()
+        self.window_target = game if self.wants_window(game) else None
+        self.capture_kind = "window" if self.window_target else "screen"
+        self.dark_streak = 0
+        if not self.available:
+            self.available = probe_encoders()
+        self.encoder = pick_encoder(s["encoder"], self.available)
+        if self.fails >= 2 and self.encoder != "cpu":  # GPU path keeps failing: fall back
+            self.log(f"{self.encoder} failed twice, falling back to CPU")
+            self.encoder = "cpu"
+        shutil.rmtree(self.buf, ignore_errors=True)
+        self.buf.mkdir(parents=True, exist_ok=True)
+        self.order.clear()
+        fps, length = int(s["fps"]), int(s["length"])
+        wrap = math.ceil(length / SEG) + 4
+        want_audio = bool(s["desktop_audio"] or s["mic"])
+        self.has_audio = False
+        if want_audio and not TEST:
+            try:
+                import pyaudiowpatch  # noqa: F401
+                self.has_audio = True
+            except ImportError:
+                self.error = "Audio library missing (pip install PyAudioWPatch). Recording video only."
+        elif want_audio:
+            self.has_audio = True
+
+        cmd = [FFMPEG, "-hide_banner", "-nostats", "-loglevel", "info"]
+        if TEST:
+            cmd += ["-re"]
+        cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target)]
+        if self.has_audio:
+            cmd += ["-thread_queue_size", "1024", "-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
+        cmd += ["-map", "0:v"] + (["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if self.has_audio else [])
+        cmd += video_args(self.encoder, s["quality"], fps)
+        cmd += ["-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(wrap),
+                "-segment_format", "mpegts", "-reset_timestamps", "1", str(self.buf / "seg%03d.ts")]
+        self.log("ffmpeg: " + " ".join(cmd))
+        self.proc = subprocess.Popen(cmd, stdin=subprocess.PIPE if self.has_audio else subprocess.DEVNULL,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                     creationflags=NO_WINDOW, bufsize=0)
+        self.started_at = time.monotonic()
+        self.state = "buffering"
+        if not self.has_audio or "Audio library" not in self.error:
+            self.error = ""
+        threading.Thread(target=self._read_stderr, args=(self.proc,), daemon=True).start()
+        if self.has_audio:
+            try:
+                self.pump = AudioPump(self.proc.stdin.write, s["desktop_audio"], s["mic"], s.get("mic_device"),
+                                      on_error=self._set_error)
+                self.pump.start()
+            except Exception as e:
+                self.pump = None
+                self._set_error(f"Couldn't open audio: {e}")
+                # keep ffmpeg fed with silence so video still records
+                self.pump = AudioPump(self.proc.stdin.write, False, False, None, on_error=self._set_error)
+                self.pump.start()
+
+    def _set_error(self, msg):
+        self.error = msg
+        self.log(msg)
+
+    def _read_stderr(self, proc):
+        pat = re.compile(r"Opening '(.+?)' for writing")
+        for raw in iter(proc.stderr.readline, b""):
+            line = raw.decode("utf-8", "replace").rstrip()
+            m = pat.search(line)
+            if m:
+                self.order.append((Path(m.group(1)).name, time.monotonic()))
+                self.fails = 0
+            elif line:
+                self.stderr_tail.append(line)
+
+    def _kill(self):
+        if self.pump:
+            self.pump.stop()
+            self.pump = None
+        if self.proc:
+            try:
+                if self.proc.stdin:
+                    self.proc.stdin.close()
+            except Exception:
+                pass
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=3)
+            except Exception:
+                try:
+                    self.proc.kill()
+                except Exception:
+                    pass
+            self.proc = None
+
+    def stop(self, paused=True, waiting=False):
+        with self.lock:
+            self.wanted = False
+            self._kill()
+            self.state = "waiting" if waiting else "paused" if paused else "stopped"
+            self.notice = ""
+
+    def _health(self):
+        """Every few seconds, look at the newest finished piece of the buffer. If it's solid
+        black while a game is in front, the game is blocking screen capture: switch to
+        recording that game's window, and remember to do so next time."""
+        while True:
+            time.sleep(4)
+            try:
+                if self.state != "buffering" or len(self.order) < 2:
+                    continue
+                seg = self.buf / self.order[-2][0]
+                stats = frame_stats(seg)
+                if stats is None:
+                    continue
+                self.last_check = {"mean": round(stats[0], 1), "spread": round(stats[1], 2), "black": is_black(stats)}
+                game = self.game_fn()
+                if not is_black(stats) or not game or not game.get("focused", True):
+                    self.dark_streak = 0
+                    if self.notice.startswith("Clips are coming out black"):
+                        self.notice = ""
+                    continue
+                self.dark_streak += 1
+                if self.dark_streak < 3:
+                    continue
+                if self.capture_kind == "screen" and self.settings.get("capture", "auto") == "auto":
+                    if window_capture_supported():
+                        self.remember_window_game(game["exe"])
+                        self.notice = (f"{game['name']} blocked screen capture, so Rewind records its window "
+                                       "instead. Rewind will remember this for next time.")
+                        self.log(f"black capture in {game['name']}, switching to window capture")
+                        with self.lock:
+                            if self.wanted:
+                                self._kill(); self._launch()
+                        continue
+                if self.dark_streak == 3:
+                    self.notice = ("Clips are coming out black. Set the game to borderless or windowed "
+                                   "fullscreen" + ("" if window_capture_supported() else
+                                                    ", or update ffmpeg so Rewind can record the game window") + ".")
+            except Exception as e:
+                self.log(f"health check: {e}")
+
+    def restart(self):
+        with self.lock:
+            self._kill()
+            self.fails = 0
+            if self.wanted:
+                self._launch()
+
+    def _watchdog(self):
+        while True:
+            time.sleep(1.5)
+            with self.lock:
+                if self.wanted and self.proc and self.proc.poll() is not None:
+                    tail = [l for l in self.stderr_tail if "rror" in l or "ailed" in l] or list(self.stderr_tail)
+                    self.fails += 1
+                    self._set_error("Capture stopped: " + (tail[-1] if tail else f"ffmpeg exited ({self.proc.returncode})"))
+                    self.state = "error"
+                    self._kill()
+                    if self.fails <= 4:
+                        time.sleep(1)
+                        self._launch()
+                        self.state = "buffering"
+
+    # ---- status
+    def buffered(self):
+        if self.state != "buffering" or not self.order:
+            return 0.0
+        return min(time.monotonic() - self.order[0][1], float(self.settings["length"]))
+
+    def status(self):
+        size = sum(f.stat().st_size for f in self.buf.glob("seg*.ts")) if self.buf.exists() else 0
+        levels = list(self.pump.levels)[-int(self.settings["length"]) * 4:] if self.pump else []
+        return {
+            "state": "saving" if self.saving else self.state,
+            "error": self.error,
+            "buffered": round(self.buffered(), 1),
+            "length": int(self.settings["length"]),
+            "disk_mb": round(size / 1e6, 1),
+            "encoder": self.encoder,
+            "encoder_label": ENCODERS[self.encoder][1],
+            "available": self.available,
+            "fps": int(self.settings["fps"]),
+            "audio": self.has_audio,
+            "levels": levels,
+            "last_saved": self.last_saved,
+            "capture": self.capture_kind,
+            "capture_label": f"{self.window_target['name']} window" if self.window_target else "Whole screen",
+            "window_capture": window_capture_supported(),
+            "notice": self.notice,
+            "check": self.last_check,
+        }
+
+    # ---- save
+    def save(self, clips_dir, title=None):
+        if self.state != "buffering" or not self.order:
+            raise RuntimeError("Nothing to save yet. The buffer is empty.")
+        with self.save_lock:
+            self.saving = True
+            try:
+                return self._save(Path(clips_dir), title)
+            finally:
+                self.saving = False
+
+    def _save(self, clips_dir, title=None):
+        length = int(self.settings["length"])
+        need = math.ceil(length / SEG) + 1
+        names, seen = [], set()
+        for name, _ in reversed(self.order):  # newest first, skip names the ring already reused
+            if name in seen:
+                break
+            seen.add(name)
+            names.append(name)
+            if len(names) >= need:
+                break
+        names.reverse()
+        files = [self.buf / n for n in names if (self.buf / n).exists() and (self.buf / n).stat().st_size > 0]
+        if not files:
+            raise RuntimeError("Nothing to save yet. The buffer is empty.")
+
+        clips_dir.mkdir(parents=True, exist_ok=True)
+        title = safe_name(title or self.title_fn())
+        stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        final = clips_dir / f"{title} {stamp}.mp4"
+        n = 2
+        while final.exists():
+            final = clips_dir / f"{title} {stamp} ({n}).mp4"
+            n += 1
+        work = Path(tempfile.mkdtemp(prefix="rewind-save-"))
+        try:
+            # snapshot the segments first, so the ring can't overwrite them mid-copy
+            snap = []
+            for i, f in enumerate(files):
+                d = work / f"{i:03d}.ts"
+                shutil.copyfile(f, d)
+                snap.append(d)
+            lst = work / "list.txt"
+            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in snap), encoding="utf-8")
+            joined = work / "joined.mp4"
+            r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                     "-c", "copy", "-movflags", "+faststart", str(joined)], timeout=120)
+            if r.returncode != 0 or not joined.exists():
+                raise RuntimeError("Couldn't join the buffer: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
+            total = duration_of(joined)
+            cut = keyframe_at_or_before(joined, total - length + 0.3)
+            if cut > 0.5:
+                r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-ss", f"{cut + 0.01:.3f}", "-i", str(joined),
+                         "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", str(final)],
+                        timeout=120)
+                if r.returncode != 0:
+                    shutil.copyfile(joined, final)
+            else:
+                shutil.copyfile(joined, final)
+        finally:
+            shutil.rmtree(work, ignore_errors=True)
+        make_thumb(final)
+        self.last_saved = final.name
+        self.log(f"saved {final}")
+        return final
+
+
+def keyframe_at_or_before(path, t):
+    """Latest video keyframe time <= t (reads packet flags only, no decoding)."""
+    r = run([FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "packet=pts_time,flags",
+             "-of", "csv=p=0", str(path)], timeout=60)
+    best = 0.0
+    for line in r.stdout.splitlines():
+        parts = line.split(",")
+        try:
+            pts = float(parts[0])
+        except (ValueError, IndexError):
+            continue
+        if "K" in (parts[1] if len(parts) > 1 else "") and pts <= t:
+            best = max(best, pts)
+    return best
+
+
+def thumb_path(video):
+    return video.parent / ".thumbs" / (video.stem + ".jpg")
+
+
+def make_thumb(video):
+    t = thumb_path(video)
+    t.parent.mkdir(exist_ok=True)
+    if IS_WIN:
+        try:  # hide the thumbnails folder
+            import ctypes
+            ctypes.windll.kernel32.SetFileAttributesW(str(t.parent), 0x02)
+        except Exception:
+            pass
+    d = duration_of(video)
+    run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-ss", f"{max(0, d * 0.6):.2f}", "-i", str(video),
+         "-frames:v", "1", "-vf", "scale=480:-2", "-q:v", "4", str(t)], timeout=60)
+    return t

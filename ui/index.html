@@ -1,0 +1,888 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rewind</title>
+<style>
+  :root {
+    --chrome: #12161e;
+    --canvas: #0e1219;
+    --card: #151a23;
+    --card-2: #1a202b;
+    --line: #252c38;
+    --line-2: #303848;
+    --text: #e7ebf2;
+    --muted: #8a93a4;
+    --dim: #5c6577;
+    --cyan: #22c1f1;
+    --cyan-ink: #04202b;
+    --cyan-soft: rgba(34, 193, 241, .14);
+    --green: #3ddc84;
+    --red: #f0566b;
+    --amber: #f2b84b;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--chrome); color: var(--text); overflow: hidden;
+    font: 14px/1.45 "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
+    display: grid; grid-template-rows: 44px 1fr 28px; grid-template-columns: 220px 1fr;
+    grid-template-areas: "top top" "side main" "foot foot";
+  }
+  button, input, select { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+
+  /* title bar */
+  .top { grid-area: top; display: flex; align-items: center; padding: 0 0 0 14px; position: relative; user-select: none; }
+  .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14.5px; }
+  .brand svg { width: 22px; height: 22px; }
+  .crumb { color: var(--muted); font-size: 13px; padding-left: 12px; margin-left: 12px; border-left: 1px solid var(--line-2); }
+  .pill {
+    position: absolute; left: 50%; transform: translateX(-50%);
+    display: inline-flex; align-items: center; gap: 7px; padding: 3px 12px; border-radius: 999px;
+    font-size: 11.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+    color: var(--green); background: rgba(61,220,132,.12); border: 1px solid rgba(61,220,132,.35);
+  }
+  .pill i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .pill.paused { color: var(--muted); background: rgba(138,147,164,.1); border-color: var(--line-2); }
+  .pill.saving { color: var(--cyan); background: var(--cyan-soft); border-color: rgba(34,193,241,.45); }
+  .pill.error { color: var(--red); background: rgba(240,86,107,.12); border-color: rgba(240,86,107,.4); }
+  .wincontrols { margin-left: auto; display: flex; height: 100%; }
+  .wincontrols button {
+    width: 46px; height: 100%; background: none; border: 0; color: var(--muted); display: grid; place-items: center;
+  }
+  .wincontrols button:hover { background: #1c222d; color: var(--text); }
+  .wincontrols button.close:hover { background: #c42b1c; color: #fff; }
+  .wincontrols button.on { color: var(--cyan); }
+  .wincontrols svg { width: 14px; height: 14px; }
+
+  /* sidebar */
+  .side { grid-area: side; padding: 6px 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+  .nav {
+    display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 9px; border: 0;
+    background: none; color: #c9cfda; text-align: left; font-size: 14.5px; font-weight: 600; position: relative;
+  }
+  .nav svg { width: 18px; height: 18px; color: var(--muted); }
+  .nav:hover { background: #181d27; }
+  .nav.active { background: #1a2130; color: var(--text); }
+  .nav.active svg { color: var(--cyan); }
+  .nav.active::before { content: ""; position: absolute; left: -10px; top: 9px; bottom: 9px; width: 3px; border-radius: 0 3px 3px 0; background: var(--cyan); }
+  .nav .count { margin-left: auto; font-size: 12px; color: var(--muted); font-weight: 600; }
+  .side .spacer { flex: 1; }
+  .appcard { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-top: 8px; }
+  .appcard .row { display: flex; align-items: center; gap: 10px; }
+  .appcard svg { width: 32px; height: 32px; }
+  .appcard b { display: block; font-size: 14px; }
+  .appcard small { color: var(--muted); font-size: 12px; }
+  .appcard .btn { width: 100%; margin-top: 10px; justify-content: center; }
+  .appcard .btn + .btn { margin-top: 6px; }
+
+  /* main panel */
+  main {
+    grid-area: main; margin: 0 10px 0 0; background: var(--canvas); border: 1px solid rgba(34,193,241,.55);
+    border-radius: 14px; overflow-y: auto; scrollbar-color: #2a3240 transparent;
+  }
+  .page { display: none; padding: 24px 28px 40px; max-width: 1060px; margin: 0 auto; }
+  .page.on { display: block; }
+  h1 { font-size: 22px; margin: 0 0 4px; font-weight: 700; letter-spacing: -.01em; }
+  .lede { color: var(--muted); margin: 0 0 20px; }
+
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 20px 22px; }
+  .card + .card { margin-top: 16px; }
+  .sect { display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 700; margin: 0 0 4px; }
+  .sect::before { content: ""; width: 3px; height: 16px; border-radius: 2px; background: var(--cyan); }
+  .sect-note { color: var(--muted); margin: 0 0 16px; font-size: 13.5px; }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 14px; border-radius: 8px;
+    background: var(--card-2); border: 1px solid var(--line-2); font-weight: 600; font-size: 13.5px; white-space: nowrap;
+  }
+  .btn:hover { border-color: #3d4659; background: #1e2532; }
+  .btn svg { width: 16px; height: 16px; }
+  .btn.primary { background: var(--cyan); border-color: var(--cyan); color: var(--cyan-ink); }
+  .btn.primary:hover { background: #4bcef5; }
+  .btn.danger { color: var(--red); }
+  .btn.danger.armed { background: var(--red); border-color: var(--red); color: #fff; }
+  .btn:disabled { opacity: .5; cursor: default; }
+
+  /* home hero */
+  .hero { padding: 22px 22px 18px; }
+  .hero-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; }
+  .hero h2 { margin: 0; font-size: 26px; font-weight: 700; letter-spacing: -.015em; font-variant-numeric: tabular-nums; }
+  .hero .how { margin: 6px 0 0; color: var(--muted); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .keys { display: inline-flex; align-items: center; gap: 5px; }
+  kbd {
+    display: inline-block; min-width: 26px; padding: 2px 8px; border-radius: 6px; text-align: center;
+    background: #222a37; border: 1px solid #343e50; border-bottom-width: 2px; color: var(--text);
+    font: 600 12.5px/1.5 inherit; font-family: inherit;
+  }
+  .keys span { color: var(--dim); font-size: 12px; }
+  .savebtn { height: 46px; padding: 0 22px; font-size: 15px; border-radius: 10px; }
+  .savebtn svg { width: 18px; height: 18px; }
+  .hero .err { margin: 12px 0 0; color: var(--red); font-size: 13.5px; }
+  .hero .err:empty { display: none; }
+
+  .tape { position: relative; margin-top: 20px; }
+  .tape canvas { display: block; width: 100%; height: 160px; }
+  .nowdot {
+    position: absolute; right: -4px; top: 62px; width: 9px; height: 9px; border-radius: 50%;
+    background: var(--cyan); box-shadow: 0 0 0 0 rgba(34,193,241,.5); animation: ping 2s ease-out infinite;
+  }
+  body.paused .nowdot, body.error .nowdot { background: var(--dim); animation: none; }
+  @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(34,193,241,.55); } 70%, 100% { box-shadow: 0 0 0 10px rgba(34,193,241,0); } }
+  .stats { display: flex; gap: 28px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .stat small { display: block; color: var(--muted); font-size: 12px; }
+  .stat b { font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+  .rowhead { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 0 12px; }
+  .rowhead h3 { margin: 0; font-size: 16px; }
+  .link { background: none; border: 0; color: var(--cyan); font-weight: 600; padding: 0; }
+
+  /* clips */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 14px; }
+  .clip {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; padding: 0;
+    text-align: left; display: block; width: 100%;
+  }
+  .clip:hover { border-color: #3a4457; }
+  .clip:hover .shot img { transform: scale(1.03); }
+  .shot { aspect-ratio: 16 / 9; background: #0a0d12; position: relative; overflow: hidden; }
+  .shot img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform .25s; }
+  .shot .new {
+    position: absolute; left: 8px; top: 8px; background: var(--cyan); color: var(--cyan-ink);
+    font-size: 11.5px; font-weight: 700; padding: 1px 8px; border-radius: 5px;
+  }
+  .clip .meta { padding: 10px 12px 12px; }
+  .clip .meta b { display: block; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .clip .meta small { color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; }
+  .empty {
+    border: 1px dashed var(--line-2); border-radius: 12px; padding: 34px; text-align: center; color: var(--muted);
+  }
+  .empty b { display: block; color: var(--text); font-size: 15px; margin-bottom: 4px; }
+
+  /* settings rows */
+  .set { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 12px 0; }
+  .set + .set { border-top: 1px solid #1e2430; }
+  .set .lbl b { display: block; font-weight: 600; }
+  .set .lbl small { color: var(--muted); font-size: 12.5px; }
+  .seg { display: inline-flex; background: #11161e; border: 1px solid var(--line-2); border-radius: 8px; overflow: hidden; flex-shrink: 0; }
+  .seg button { background: none; border: 0; padding: 7px 14px; color: #b8c0cd; font-weight: 600; font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button:hover { color: var(--text); }
+  .seg button.on { background: var(--cyan); color: var(--cyan-ink); }
+  .seg button:disabled { color: var(--dim); cursor: default; }
+  .seg .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); }
+  .seg button.on .dot { background: var(--cyan-ink); }
+  select {
+    height: 36px; min-width: 240px; padding: 0 12px; border-radius: 8px; background: #11161e; border: 1px solid var(--line-2);
+  }
+  .switch { position: relative; width: 40px; height: 22px; flex-shrink: 0; }
+  .switch input { position: absolute; opacity: 0; inset: 0; margin: 0; cursor: pointer; }
+  .switch span { position: absolute; inset: 0; border-radius: 999px; background: #2a3140; transition: background .15s; pointer-events: none; }
+  .switch span::after { content: ""; position: absolute; left: 3px; top: 3px; width: 16px; height: 16px; border-radius: 50%; background: #c5ccd8; transition: transform .15s; }
+  .switch input:checked + span { background: var(--cyan); }
+  .switch input:checked + span::after { transform: translateX(18px); background: #fff; }
+  .switch input:focus-visible + span { outline: 2px solid var(--cyan); outline-offset: 2px; }
+  .hk { display: flex; align-items: center; gap: 10px; }
+  .hk.listening kbd { border-color: var(--cyan); }
+  .warn { color: var(--amber); font-size: 12.5px; }
+  .path { font-size: 12.5px; color: var(--muted); max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; }
+  .gpu-line { display: flex; align-items: center; gap: 10px; padding: 4px 0 14px; }
+  .gpu-line i { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
+  .gpu-line.cpu i { background: var(--amber); }
+  .gpu-line small { display: block; color: var(--muted); font-size: 12.5px; }
+
+  /* game bar + notice */
+  .gamebar { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 8px; height: 30px; padding: 0 12px; border-radius: 999px;
+    background: #11161e; border: 1px solid var(--line-2); font-size: 13px; font-weight: 600; color: #c9cfda;
+  }
+  .chip i { width: 7px; height: 7px; border-radius: 50%; background: var(--dim); }
+  .chip.live { border-color: rgba(61,220,132,.4); color: var(--text); }
+  .chip.live i { background: var(--green); }
+  .chip.away i { background: var(--amber); }
+  .chip small { color: var(--muted); font-weight: 500; }
+  .chip button { background: none; border: 0; color: var(--muted); padding: 0 0 0 2px; font-size: 15px; line-height: 1; }
+  .chip button:hover { color: var(--text); }
+  .notice {
+    margin: 14px 0 0; padding: 10px 14px; border-radius: 9px; font-size: 13.5px;
+    background: var(--cyan-soft); border: 1px solid rgba(34,193,241,.35); color: #cdeefb;
+  }
+  .notice:empty { display: none; }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .filters { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+  .filters button { height: 32px; padding: 0 14px; border-radius: 999px; background: #11161e; border: 1px solid var(--line-2); font-weight: 600; font-size: 13px; color: #b8c0cd; }
+  .filters button.on { background: var(--cyan); border-color: var(--cyan); color: var(--cyan-ink); }
+  .stack { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; }
+  .subhead { font-weight: 600; margin: 4px 0 8px; }
+
+  /* footer */
+  footer { grid-area: foot; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; font-size: 12.5px; color: var(--muted); }
+  footer .st { display: flex; align-items: center; gap: 7px; }
+  footer .st i { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  body.paused footer .st i { background: var(--dim); }
+  body.error footer .st i { background: var(--red); }
+
+  /* player */
+  .modal { position: fixed; inset: 0; background: rgba(5,7,11,.72); display: none; place-items: center; padding: 30px; z-index: 10; }
+  .modal.on { display: grid; }
+  .player { width: min(960px, 100%); background: var(--card); border: 1px solid var(--line-2); border-radius: 14px; overflow: hidden; }
+  .player video { display: block; width: 100%; aspect-ratio: 16 / 9; max-height: 62vh; background: #000; }
+  .player .bar { display: flex; align-items: center; gap: 10px; padding: 14px 16px; }
+  .player input[type=text] {
+    flex: 1; min-width: 0; height: 36px; padding: 0 12px; border-radius: 8px; background: #11161e; border: 1px solid var(--line-2);
+  }
+  .player .x { margin-left: 4px; }
+
+  /* toasts */
+  .toasts { position: fixed; right: 26px; bottom: 44px; display: flex; flex-direction: column; gap: 10px; z-index: 20; }
+  .toast {
+    width: 340px; background: #1a212d; border: 1px solid var(--line-2); border-left: 3px solid var(--cyan);
+    border-radius: 10px; padding: 12px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4);
+    animation: in .22s ease-out;
+  }
+  .toast.error { border-left-color: var(--red); }
+  .toast b { display: block; font-size: 14px; }
+  .toast small { display: block; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .toast .acts { display: flex; gap: 8px; margin-top: 10px; }
+  .toast .btn { height: 30px; font-size: 12.5px; }
+  @keyframes in { from { transform: translateY(8px); opacity: 0; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    .nowdot, .toast { animation: none; }
+    .shot img { transition: none; }
+  }
+  @media (max-width: 860px) {
+    body { grid-template-columns: 64px 1fr; }
+    .nav span, .nav .count, .appcard, .crumb { display: none; }
+    .hero-top { flex-direction: column; }
+    .set { flex-direction: column; align-items: flex-start; }
+  }
+</style>
+</head>
+<body class="paused">
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="lg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#123b86"/><stop offset="1" stop-color="#0a1f4a"/></linearGradient>
+    <symbol id="logo" viewBox="0 0 32 32">
+      <rect width="32" height="32" rx="8" fill="url(#lg)"/>
+      <path d="M9.2 12.2A8 8 0 1 1 8 16" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"/>
+      <path d="M5.6 9.6l3.9 3 1.4-4.8z" fill="#fff"/>
+      <path d="M14 12.4v7.2l6-3.6z" fill="#22c1f1"/>
+    </symbol>
+  </defs>
+</svg>
+
+<div class="top pywebview-drag-region">
+  <div class="brand"><svg><use href="#logo"/></svg>Rewind</div>
+  <div class="crumb" id="crumb">Home</div>
+  <div class="pill paused" id="pill"><i></i><span>Starting</span></div>
+  <div class="wincontrols" id="wc" hidden>
+    <button id="pin" title="Keep on top" aria-label="Keep on top"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M10 1.5l4.5 4.5-2.3.8-2.6 2.6.4 3.1-1.2 1.2-2.6-2.6L2.5 14.8 1.2 13.5l3.7-3.7L2.3 7.2l1.2-1.2 3.1.4 2.6-2.6z"/></svg></button>
+    <button data-w="minimize" aria-label="Minimize"><svg viewBox="0 0 16 16" stroke="currentColor"><path d="M3 8.5h10"/></svg></button>
+    <button data-w="maximize" aria-label="Maximize"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor"><rect x="3.5" y="3.5" width="9" height="9" rx="1"/></svg></button>
+    <button data-w="close" class="close" aria-label="Close"><svg viewBox="0 0 16 16" stroke="currentColor" stroke-width="1.2"><path d="M3.5 3.5l9 9M12.5 3.5l-9 9"/></svg></button>
+  </div>
+</div>
+
+<nav class="side" aria-label="Pages">
+  <button class="nav active" data-page="home"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 9l7-5.5L17 9v7.5a1 1 0 0 1-1 1h-3.5v-5h-5v5H4a1 1 0 0 1-1-1z"/></svg><span>Home</span></button>
+  <button class="nav" data-page="clips"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="4" width="15" height="12" rx="2"/><path d="M8.5 7.8v4.4l3.7-2.2z" fill="currentColor"/></svg><span>Clips</span><span class="count" id="navcount"></span></button>
+  <div class="spacer"></div>
+  <button class="nav" data-page="settings"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="2.6"/><path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4"/></svg><span>Settings</span></button>
+  <div class="appcard">
+    <div class="row"><svg><use href="#logo"/></svg><div><b>Rewind</b><small id="ver">v1.1.0</small></div></div>
+    <button class="btn primary" id="updatebtn" hidden>Update available</button>
+    <button class="btn" id="sitebtn">Website &amp; help</button>
+  </div>
+</nav>
+
+<main id="main">
+  <!-- HOME -->
+  <section class="page on" id="page-home">
+    <div class="card hero">
+      <div class="hero-top">
+        <div>
+          <h2 id="headline">Starting the buffer…</h2>
+          <p class="how" id="how">Press <span class="keys" id="keys-home"></span> in any game to save it.</p>
+        </div>
+        <button class="btn primary savebtn" id="savebtn">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 7.5A6.5 6.5 0 1 1 3.5 10" stroke-linecap="round"/><path d="M2.6 5.2l2.4 2.6 2.4-2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          <span>Save replay</span>
+        </button>
+      </div>
+      <div class="gamebar"><span class="chip" id="gamechip"><i></i><span id="gametext">Looking for a game…</span></span><span class="chip" id="capchip"><small>Recording</small><span id="captext">Whole screen</span></span></div>
+      <p class="notice" id="notice"></p>
+      <p class="err" id="err"></p>
+      <div class="tape" aria-hidden="true"><canvas id="tape"></canvas><div class="nowdot"></div></div>
+      <div class="stats">
+        <div class="stat"><small>Encoding with</small><b id="s-enc">–</b></div>
+        <div class="stat"><small>Frame rate</small><b id="s-fps">–</b></div>
+        <div class="stat"><small>Audio</small><b id="s-audio">–</b></div>
+        <div class="stat"><small>Capture check</small><b id="s-check">–</b></div>
+        <div class="stat"><small>Buffer on disk</small><b id="s-disk">–</b></div>
+        <div class="stat" style="margin-left:auto"><button class="btn" id="togglebtn">Pause buffer</button></div>
+      </div>
+    </div>
+    <div class="rowhead"><h3>Recent replays</h3><button class="link" data-goto="clips">See all clips</button></div>
+    <div class="grid" id="recent"></div>
+  </section>
+
+  <!-- CLIPS -->
+  <section class="page" id="page-clips">
+    <div class="rowhead" style="margin-top:0">
+      <div><h1>Clips</h1><p class="lede" id="clipsub" style="margin:0"></p></div>
+      <button class="btn" id="openfolder">Open folder</button>
+    </div>
+    <div style="height:16px"></div>
+    <div class="filters" id="filters"></div>
+    <div class="grid" id="allclips"></div>
+  </section>
+
+  <!-- SETTINGS -->
+  <section class="page" id="page-settings">
+    <div class="card">
+      <div class="sect">Replay</div>
+      <p class="sect-note">How much Rewind keeps, and how you save it.</p>
+      <div class="set">
+        <div class="lbl"><b>Replay length</b><small>Longer replays use more disk space while buffering.</small></div>
+        <div class="seg" id="seg-length"></div>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Save shortcut</b><small id="hk-note">Works while a game is in focus.</small></div>
+        <div class="hk" id="hk"><span class="keys" id="keys-set"></span><button class="btn" id="hkbtn">Change</button></div>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Sound when saved</b><small>So you know it worked without leaving the game.</small></div>
+        <div class="stack"><div class="seg" id="seg-sound"></div><div style="display:flex;gap:8px;align-items:center"><div class="seg" id="seg-volume"></div><button class="btn" id="playsound">Play</button></div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect">Games</div>
+      <p class="sect-note">Rewind spots the game you're playing and names clips after it.</p>
+      <div class="gpu-line" id="nowline"><i></i><div><b id="now-title">No game in front right now</b><small id="now-sub">Open a game and it shows up here.</small></div></div>
+      <div class="set">
+        <div class="lbl"><b>Only record while playing</b><small>The buffer starts when a game opens and stops when it closes.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-gameonly"><span></span></label>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>A folder for each game</b><small>Saves to Rewind\Valorant, Rewind\Roblox and so on.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-gamefolders"><span></span></label>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>How to record games</b><small id="cap-note">Automatic records the screen, and switches to the game's own window if the game shows up black.</small></div>
+        <div class="seg" id="seg-capture"></div>
+      </div>
+      <div class="set" id="wg-row">
+        <div class="lbl"><b>Recorded through their window</b><small>Games that came out black on screen capture. Remove one to try the screen again.</small></div>
+        <div class="chips" id="wg-chips"></div>
+      </div>
+      <div class="set" id="recent-row">
+        <div class="lbl"><b>Games Rewind has seen</b><small>Press × on anything that isn't a game.</small></div>
+        <div class="chips" id="recent-chips"></div>
+      </div>
+      <div class="set" id="ignored-row">
+        <div class="lbl"><b>Not games</b><small>Rewind ignores these.</small></div>
+        <div class="chips" id="ignored-chips"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect">Video</div>
+      <p class="sect-note">Changing these restarts the buffer.</p>
+      <div class="gpu-line" id="gpuline"><i></i><div><b id="gpu-title">Checking your graphics card…</b><small id="gpu-sub"></small></div></div>
+      <div class="set">
+        <div class="lbl"><b>Encoder</b><small>The graphics card encodes with almost no effect on your game.</small></div>
+        <div class="seg" id="seg-encoder"></div>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Display</b><small>Which screen to record.</small></div>
+        <select id="opt-monitor"></select>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Frame rate</b></div>
+        <div class="seg" id="seg-fps"></div>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Quality</b><small>Best looks sharper in fast motion and makes bigger files.</small></div>
+        <div class="seg" id="seg-quality"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect">Audio</div>
+      <p class="sect-note">Changing these restarts the buffer.</p>
+      <div class="set">
+        <div class="lbl"><b>Game and desktop sound</b><small>Everything you hear through your speakers or headset.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-desktop"><span></span></label>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Microphone</b><small>Mixes your voice into the replay.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-mic"><span></span></label>
+      </div>
+      <div class="set" id="microw">
+        <div class="lbl"><b>Microphone to use</b></div>
+        <select id="opt-micdev"></select>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect">Storage</div>
+      <p class="sect-note">Where saved replays go.</p>
+      <div class="set">
+        <div class="lbl"><b>Clips folder</b><small class="path" id="clipsdir"></small></div>
+        <div style="display:flex;gap:8px"><button class="btn" id="openfolder3">Open</button><button class="btn" id="pickfolder">Change</button></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="sect">App</div>
+      <p class="sect-note">Rewind only records while it's running.</p>
+      <div class="set">
+        <div class="lbl"><b>Keep running in the tray when closed</b><small>Closing the window keeps the buffer going. Quit from the tray icon.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-tray"><span></span></label>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Start hidden in the tray</b><small>Useful with a startup shortcut.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-hidden"><span></span></label>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="st"><i></i><span id="foot">Starting</span></div>
+  <div id="footver">Rewind v1.1.0</div>
+</footer>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Replay player">
+  <div class="player">
+    <video id="video" controls playsinline></video>
+    <div class="bar">
+      <input type="text" id="cliptitle" aria-label="Clip name" spellcheck="false">
+      <button class="btn" id="rename">Rename</button>
+      <button class="btn" id="reveal">Show in folder</button>
+      <button class="btn danger" id="delete">Delete</button>
+      <button class="btn x" id="closeplayer" aria-label="Close player">Close</button>
+    </div>
+  </div>
+</div>
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<script>
+const TOKEN = "__TOKEN__";
+const $ = (id) => document.getElementById(id);
+let S = null;            // last /api/state
+let clips = [];
+let seenEvents = new Set();
+let firstState = true;
+let levelsStamp = 0;
+const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+async function api(path, body) {
+  const r = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json", "X-Rewind": TOKEN }, body: JSON.stringify(body || {}) });
+  return r.json();
+}
+const get = (p) => fetch(p).then((r) => r.json());
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const fmtLen = (s) => s >= 60 ? (s % 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s / 60} minute${s > 60 ? "s" : ""}`) : `${s} seconds`;
+const clock = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, "0")}`;
+
+function keycaps(label) {
+  return label.split(" + ").map((k) => `<kbd>${esc(k)}</kbd>`).join("<span>+</span>");
+}
+
+function when(ts) {
+  const d = new Date(ts * 1000), now = new Date();
+  const t = d.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+  const days = Math.round((new Date(now.toDateString()) - new Date(d.toDateString())) / 864e5);
+  if (days === 0) return `Today, ${t}`;
+  if (days === 1) return `Yesterday, ${t}`;
+  return d.toLocaleDateString([], { month: "short", day: "numeric" }) + `, ${t}`;
+}
+
+/* ---------- navigation */
+const pages = { home: "Home", clips: "Clips", settings: "Settings" };
+function go(p) {
+  document.querySelectorAll(".nav").forEach((n) => n.classList.toggle("active", n.dataset.page === p));
+  document.querySelectorAll(".page").forEach((n) => n.classList.toggle("on", n.id === "page-" + p));
+  $("crumb").textContent = pages[p];
+  $("main").scrollTop = 0;
+  if (p === "clips") loadClips();
+  if (p === "settings") api("/api/mics").then((m) => { if (S) { S.mics = m; renderSettings(); } });
+}
+document.querySelectorAll(".nav").forEach((n) => n.addEventListener("click", () => go(n.dataset.page)));
+document.querySelectorAll("[data-goto]").forEach((n) => n.addEventListener("click", () => go(n.dataset.goto)));
+
+/* ---------- window controls (native window only) */
+document.querySelectorAll("[data-w]").forEach((b) => b.addEventListener("click", () => api("/api/window/" + b.dataset.w)));
+$("pin").addEventListener("click", () => { const on = !$("pin").classList.contains("on"); $("pin").classList.toggle("on", on); api("/api/window/pin", { on }); });
+
+/* ---------- state */
+async function poll() {
+  try {
+    S = await get("/api/state");
+    render();
+  } catch (e) {
+    $("pill").className = "pill error"; $("pill").querySelector("span").textContent = "Offline";
+    $("foot").textContent = "Rewind isn't responding. Restart it from the tray.";
+  }
+  setTimeout(poll, 500);
+}
+
+function render() {
+  const st = S.status, s = S.settings;
+  const state = st.state;
+  document.body.className = state === "buffering" || state === "saving" ? "" : state === "error" ? "error" : "paused";
+  $("wc").hidden = !S.native_window;
+  $("ver").textContent = "v" + S.version;
+  $("sitebtn").hidden = !S.website;
+  $("updatebtn").hidden = !S.update;
+  if (S.update) $("updatebtn").textContent = S.update.ready ? `Restart to update to v${S.update.version}`
+    : S.update.auto ? `Downloading v${S.update.version}…` : `Get v${S.update.version}`;
+  $("updatebtn").disabled = !!(S.update && S.update.auto && !S.update.ready);
+  $("footver").textContent = "Rewind v" + S.version;
+
+  const pill = $("pill");
+  pill.className = "pill " + ({ buffering: "", saving: "saving", error: "error" }[state] ?? "paused");
+  pill.querySelector("span").textContent = { buffering: "Buffering", saving: "Saving", error: "Stopped", paused: "Paused", starting: "Starting", waiting: "Waiting" }[state] || state;
+
+  const g = S.game;
+  $("gamechip").className = "chip" + (g ? (g.focused ? " live" : " away") : "");
+  $("gametext").textContent = g ? (g.focused ? `Playing ${g.name}` : `${g.name} (in the background)`) : "No game detected";
+  $("capchip").hidden = state !== "buffering" && state !== "saving";
+  $("captext").textContent = st.capture_label;
+  $("notice").textContent = st.notice || "";
+  $("s-check").textContent = !st.check ? "–" : st.check.black ? "Black frames" : "Picture OK";
+
+  const full = st.buffered >= st.length - 0.6;
+  let head;
+  if (state === "error") head = "Recording stopped";
+  else if (state === "paused" || state === "stopped") head = "Buffer is paused";
+  else if (state === "waiting") head = "Waiting for a game";
+  else if (state === "saving") head = "Saving your replay…";
+  else if (state === "starting" || !st.buffered) head = "Starting the buffer…";
+  else head = full ? `Last ${fmtLen(st.length)} ready` : `Filling the buffer… ${clock(st.buffered)} of ${clock(st.length)}`;
+  $("headline").textContent = head;
+  $("err").textContent = st.error || (S.hotkey_ok ? "" : S.hotkey_error);
+  $("how").innerHTML = state === "waiting"
+    ? "The buffer starts by itself when a game opens. Change this in Settings, under Games."
+    : `Press <span class="keys">${keycaps(S.hotkey_label)}</span> in any game to save it.`;
+  $("savebtn").disabled = !(state === "buffering" && st.buffered > 0);
+  $("togglebtn").textContent = state === "paused" ? "Resume buffer" : state === "error" ? "Try again" : state === "waiting" ? "Record now" : "Pause buffer";
+
+  $("s-enc").textContent = st.encoder_label;
+  $("s-fps").textContent = st.fps + " fps";
+  $("s-audio").textContent = st.audio ? [s.desktop_audio && "Game", s.mic && "Mic"].filter(Boolean).join(" + ") : "Off";
+  $("s-disk").textContent = st.disk_mb + " MB";
+
+  $("navcount").textContent = S.clip_count || "";
+  $("foot").textContent = state === "buffering"
+    ? `Buffering · ${S.clip_count} clip${S.clip_count === 1 ? "" : "s"} saved`
+    : state === "error" ? "Recording stopped" : state === "saving" ? "Saving replay" : state === "waiting" ? "Waiting for a game" : "Paused";
+
+  if (TAPE.levels !== st.levels.join()) { TAPE.levels = st.levels.join(); TAPE.data = st.levels; levelsStamp = performance.now(); }
+  TAPE.len = st.length; TAPE.buffered = st.buffered; TAPE.state = state; TAPE.audio = st.audio;
+
+  for (const ev of S.events) {
+    if (seenEvents.has(ev.id)) continue;
+    seenEvents.add(ev.id);
+    if (!firstState) toast(ev);
+  }
+  if (firstState) { firstState = false; loadClips(); }
+  const key = JSON.stringify([s, st.available, st.encoder, S.monitors, S.mics, S.hotkey_ok, S.hotkey_error, S.hotkey_label,
+    st.window_capture, g && [g.name, g.focused, g.reason], S.recent_games.map((r) => r.exe)]);
+  if (key !== settingsKey) { settingsKey = key; renderSettings(); }
+}
+
+/* ---------- the tape: the last N seconds, scrolling left */
+const TAPE = { data: [], levels: "", len: 30, buffered: 0, state: "", audio: true };
+function drawTape() {
+  const c = $("tape"), dpr = devicePixelRatio || 1;
+  const W = c.clientWidth, H = c.clientHeight;
+  if (!W) return requestAnimationFrame(drawTape);
+  if (c.width !== W * dpr) { c.width = W * dpr; c.height = H * dpr; }
+  const g = c.getContext("2d");
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, W, H);
+  const L = TAPE.len, mid = 66, live = TAPE.state === "buffering" || TAPE.state === "saving";
+  const x = (t) => W * (1 + t / L);        // t in seconds, -L .. 0
+
+  // recorded region
+  const b = Math.min(TAPE.buffered, L);
+  g.fillStyle = live ? "rgba(34,193,241,.06)" : "rgba(138,147,164,.05)";
+  g.fillRect(x(-b), 8, W - x(-b), mid * 2 - 16);
+  // not yet recorded: dashed baseline
+  g.strokeStyle = "#2a3242"; g.setLineDash([3, 5]); g.lineWidth = 1;
+  g.beginPath(); g.moveTo(0, mid); g.lineTo(x(-b), mid); g.stroke(); g.setLineDash([]);
+
+  // audio bars
+  const off = live && !reduced ? Math.min((performance.now() - levelsStamp) / 250, 2) : 0;
+  const n = TAPE.data.length, bw = Math.max(1.5, (W / (L * 4)) * 0.62);
+  g.fillStyle = live ? "#22c1f1" : "#4a5366";
+  if (TAPE.audio && n) {
+    for (let i = 0; i < n; i++) {
+      const t = -((n - 1 - i) + off) * 0.25;
+      if (t < -b) continue;
+      const h = Math.max(2, Math.sqrt(TAPE.data[i]) * (mid - 14));
+      const xx = x(t) - bw;
+      g.globalAlpha = 0.35 + 0.65 * Math.min(1, (t + L) / (L * 0.25));
+      g.fillRect(xx, mid - h, bw, h * 2);
+    }
+    g.globalAlpha = 1;
+  } else if (b > 0) {
+    g.fillRect(x(-b), mid - 1, W - x(-b), 2);
+  }
+
+  // ticks
+  const step = L <= 30 ? 5 : L <= 60 ? 10 : L <= 120 ? 20 : 60;
+  g.font = "11.5px 'Segoe UI', system-ui, sans-serif"; g.textBaseline = "top";
+  for (let t = -L; t <= 0; t += step) {
+    const xx = Math.round(x(t)) + 0.5;
+    g.strokeStyle = "#2a3242"; g.beginPath(); g.moveTo(xx, mid * 2 - 4); g.lineTo(xx, mid * 2 + 2); g.stroke();
+    g.fillStyle = "#6b7487";
+    g.textAlign = t === -L ? "left" : t === 0 ? "right" : "center";
+    const lab = t === 0 ? "now" : (Math.abs(t) >= 60 && Math.abs(t) % 60 === 0 ? `−${Math.abs(t) / 60}m` : `−${Math.abs(t)}s`);
+    g.fillText(lab, t === -L ? xx - 0.5 : xx, mid * 2 + 4);
+  }
+  // now line
+  g.fillStyle = live ? "#22c1f1" : "#4a5366"; g.fillRect(W - 2, 6, 2, mid * 2 - 12);
+  requestAnimationFrame(drawTape);
+}
+requestAnimationFrame(drawTape);
+
+/* ---------- actions */
+$("savebtn").addEventListener("click", async () => {
+  $("savebtn").disabled = true;
+  await api("/api/save");
+});
+$("togglebtn").addEventListener("click", () => api("/api/toggle"));
+$("sitebtn").addEventListener("click", () => api("/api/open-url", { url: S.website }));
+$("updatebtn").addEventListener("click", () => S.update.ready ? api("/api/update/apply") : api("/api/open-url", { url: S.update.url }));
+for (const id of ["openfolder", "openfolder3"]) $(id).addEventListener("click", () => api("/api/open-folder"));
+
+function toast(ev) {
+  const t = document.createElement("div");
+  t.className = "toast" + (ev.kind === "error" ? " error" : "");
+  if (ev.kind === "saved") {
+    t.innerHTML = `<b>Replay saved</b><small>${esc(ev.name.split("/").pop().replace(/\.mp4$/, ""))}</small>
+      <div class="acts"><button class="btn primary" data-a="play">Watch</button><button class="btn" data-a="show">Show in folder</button></div>`;
+    t.querySelector('[data-a="play"]').onclick = () => { openPlayer(ev.name); t.remove(); };
+    t.querySelector('[data-a="show"]').onclick = () => api("/api/clips/reveal", { name: ev.name });
+    loadClips();
+  } else {
+    t.innerHTML = `<b>Couldn't save the replay</b><small title="${esc(ev.message)}">${esc(ev.message)}</small>`;
+  }
+  $("toasts").appendChild(t);
+  setTimeout(() => t.remove(), 7000);
+}
+
+/* ---------- clips */
+let filter = "";
+const gameOf = (c) => c.game || niceTitle(c.title);
+async function loadClips() {
+  clips = await get("/api/clips");
+  const gamesList = [...new Set(clips.map(gameOf))];
+  if (filter && !gamesList.includes(filter)) filter = "";
+  $("filters").innerHTML = gamesList.length > 1
+    ? [["", "All games"], ...gamesList.map((x) => [x, x])].map(([v, l]) => `<button data-f="${esc(v)}" class="${v === filter ? "on" : ""}">${esc(l)}</button>`).join("")
+    : "";
+  $("filters").querySelectorAll("button").forEach((b) => b.onclick = () => { filter = b.dataset.f; loadClips(); });
+  const shown = filter ? clips.filter((c) => gameOf(c) === filter) : clips;
+  const card = (c, i) => `
+    <button class="clip" data-name="${esc(c.name)}" data-file="${esc(c.title)}">
+      <div class="shot"><img loading="lazy" alt="" src="/thumb/${encodeURIComponent(c.name)}">
+        ${S && S.status.last_saved === c.name && i === 0 ? '<span class="new">New</span>' : ""}</div>
+      <div class="meta"><b title="${esc(c.title)}">${esc(niceTitle(c.title))}</b><small>${when(c.mtime)} · ${c.size_mb} MB</small></div>
+    </button>`;
+  const empty = (S ? `<div class="empty"><b>No replays yet</b>Press ${keycaps(S.hotkey_label)} during a game, or use Save replay on Home.</div>` : "");
+  $("recent").innerHTML = clips.length ? clips.slice(0, 4).map(card).join("") : empty;
+  $("allclips").innerHTML = clips.length ? shown.map(card).join("") : empty;
+  $("clipsub").textContent = clips.length ? `${clips.length} replay${clips.length === 1 ? "" : "s"}, newest first` : "";
+  document.querySelectorAll(".clip").forEach((el) => el.addEventListener("click", () => openPlayer(el.dataset.name)));
+}
+
+// "Roblox 2026-10-06 21-14-03" -> "Roblox" (the date is already shown under it)
+function niceTitle(t) {
+  const m = t.match(/^(.*) \d{4}-\d{2}-\d{2} \d{2}-\d{2}-\d{2}( \(\d+\))?$/);
+  return m ? m[1] : t;
+}
+
+let current = null;
+function openPlayer(name) {
+  current = name;
+  $("video").src = "/media/" + encodeURIComponent(name);
+  $("cliptitle").value = name.split("/").pop().replace(/\.mp4$/, "");
+  resetDelete();
+  $("modal").classList.add("on");
+  $("video").play().catch(() => {});
+}
+function closePlayer() { $("video").pause(); $("video").removeAttribute("src"); $("video").load(); $("modal").classList.remove("on"); }
+$("closeplayer").onclick = closePlayer;
+$("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closePlayer(); });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("modal").classList.contains("on") && !listening) closePlayer(); });
+$("reveal").onclick = () => api("/api/clips/reveal", { name: current });
+$("rename").onclick = async () => {
+  const r = await api("/api/clips/rename", { name: current, title: $("cliptitle").value });
+  if (r.ok) { current = r.name; $("cliptitle").value = r.name.split("/").pop().replace(/\.mp4$/, ""); loadClips(); }
+  else toast({ kind: "error", message: r.error });
+};
+$("cliptitle").addEventListener("keydown", (e) => { if (e.key === "Enter") $("rename").click(); });
+let delTimer = null;
+function resetDelete() { clearTimeout(delTimer); $("delete").classList.remove("armed"); $("delete").textContent = "Delete"; }
+$("delete").onclick = async () => {
+  if (!$("delete").classList.contains("armed")) {
+    $("delete").classList.add("armed"); $("delete").textContent = "Move to Recycle Bin?";
+    delTimer = setTimeout(resetDelete, 3500);
+    return;
+  }
+  closePlayer();
+  await api("/api/clips/delete", { name: current });
+  loadClips();
+};
+
+/* ---------- settings */
+let settingsKey = "";
+function seg(id, opts, value, key, cast = (v) => v) {
+  const el = $(id);
+  el.innerHTML = opts.map(([v, label, disabled, dot]) =>
+    `<button data-v="${v}" class="${String(v) === String(value) ? "on" : ""}" ${disabled ? "disabled" : ""}>${dot ? '<i class="dot"></i>' : ""}${label}</button>`).join("");
+  el.querySelectorAll("button").forEach((b) => b.onclick = () => set({ [key]: cast(b.dataset.v) }));
+}
+async function set(patch) {
+  Object.assign(S.settings, patch);
+  renderSettings();
+  await api("/api/settings", patch);
+}
+function renderSettings() {
+  if (!S) return;
+  const s = S.settings, st = S.status, av = st.available || {};
+  seg("seg-length", [[15, "15s"], [30, "30s"], [60, "1m"], [120, "2m"], [300, "5m"]], s.length, "length", Number);
+  const gpuNames = { nvidia: "NVIDIA", amd: "AMD", intel: "Intel" };
+  seg("seg-encoder", [["auto", "Automatic"],
+    ...Object.entries(gpuNames).map(([k, n]) => [k, n, !av[k], av[k]]), ["cpu", "CPU"]], s.encoder, "encoder");
+  seg("seg-fps", [[30, "30 fps"], [60, "60 fps"]], s.fps, "fps", Number);
+  seg("seg-quality", [["small", "Smaller files"], ["balanced", "Balanced"], ["best", "Best"]], s.quality, "quality");
+
+  const known = Object.keys(av).length > 0;
+  $("gpuline").classList.toggle("cpu", st.encoder === "cpu");
+  $("gpu-title").textContent = !known ? "Checking your graphics card…" : st.encoder === "cpu" ? "No GPU encoder found" : `Using ${st.encoder_label}`;
+  $("gpu-sub").textContent = !known ? "" : st.encoder === "cpu"
+    ? "Recording on the CPU. It works, but can cost a few frames in heavy games. 30 fps helps."
+    : "Encoding happens on a separate part of the graphics card, so your game barely notices.";
+
+  const mon = $("opt-monitor");
+  mon.innerHTML = S.monitors.map((m) => `<option value="${m.index}" ${m.index == s.monitor ? "selected" : ""}>${esc(m.label)}</option>`).join("");
+  mon.onchange = () => set({ monitor: Number(mon.value) });
+
+  seg("seg-sound", [["chime", "Chime"], ["shutter", "Shutter"], ["pop", "Pop"], ["off", "Off"]], s.sound_name, "sound_name");
+  seg("seg-volume", [["quiet", "Quiet"], ["medium", "Medium"], ["loud", "Loud"]], s.sound_volume, "sound_volume");
+  $("seg-volume").parentElement.style.display = s.sound_name === "off" ? "none" : "flex";
+  $("seg-sound").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => b.dataset.v !== "off" && api("/api/sound/preview", { name: b.dataset.v, volume: S.settings.sound_volume })));
+  $("seg-volume").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => api("/api/sound/preview", { name: S.settings.sound_name, volume: b.dataset.v })));
+
+  // games
+  const g = S.game;
+  $("nowline").classList.toggle("cpu", !g);
+  $("now-title").textContent = g ? `Playing ${g.name}` : "No game in front right now";
+  $("now-sub").textContent = g
+    ? ({ "known game": "Recognised from Rewind's list of games.", "game library": "Found in a game library folder (Steam, Epic, Riot and others).", "fullscreen app": "Spotted because it fills the whole screen." }[g.reason] || "") + (g.focused ? "" : " It's in the background right now.")
+    : "Open a game and it shows up here.";
+  $("opt-gameonly").checked = s.game_only; $("opt-gameonly").onchange = (e) => set({ game_only: e.target.checked });
+  $("opt-gamefolders").checked = s.game_folders; $("opt-gamefolders").onchange = (e) => set({ game_folders: e.target.checked });
+  const wc = st.window_capture;
+  seg("seg-capture", [["auto", "Automatic"], ["screen", "Whole screen"], ["window", "Game window", !wc]], s.capture, "capture");
+  $("cap-note").textContent = wc
+    ? "Automatic records the screen, and switches to the game's own window if the game shows up black."
+    : "Game window recording needs a newer ffmpeg (version 8 or later). The download from the website includes it.";
+  const chip = (label, exe, action, title) => `<span class="chip">${esc(label)}<button data-exe="${esc(exe)}" data-act="${action}" title="${title}" aria-label="${title}">×</button></span>`;
+  const wg = s.window_games || [];
+  $("wg-row").style.display = wg.length ? "" : "none";
+  $("wg-chips").innerHTML = wg.map((e) => chip(nameFor(e), e, "window", "Use screen capture again")).join("");
+  const ig = (s.ignored_games || []).map((x) => x.toLowerCase());
+  const rec = (S.recent_games || []).filter((r) => !ig.includes(r.exe.toLowerCase()));
+  $("recent-row").style.display = rec.length ? "" : "none";
+  $("recent-chips").innerHTML = rec.map((r) => chip(r.name, r.exe, "ignore", "Not a game")).join("");
+  $("ignored-row").style.display = ig.length ? "" : "none";
+  $("ignored-chips").innerHTML = (s.ignored_games || []).map((e) => chip(e, e, "unignore", "Treat as a game again")).join("");
+  document.querySelectorAll("#page-settings .chip button").forEach((b) => b.onclick = () =>
+    api(b.dataset.act === "window" ? "/api/games/window" : `/api/games/${b.dataset.act}`, { exe: b.dataset.exe }).then(poll1));
+  $("opt-desktop").checked = s.desktop_audio; $("opt-desktop").onchange = (e) => set({ desktop_audio: e.target.checked });
+  $("opt-mic").checked = s.mic; $("opt-mic").onchange = (e) => set({ mic: e.target.checked });
+  $("opt-tray").checked = s.close_to_tray; $("opt-tray").onchange = (e) => set({ close_to_tray: e.target.checked });
+  $("opt-hidden").checked = s.start_hidden; $("opt-hidden").onchange = (e) => set({ start_hidden: e.target.checked });
+  $("microw").style.display = s.mic ? "" : "none";
+  const md = $("opt-micdev");
+  md.innerHTML = `<option value="">Windows default</option>` +
+    (S.mics || []).map((m) => `<option ${m.id === s.mic_device ? "selected" : ""}>${esc(m.name)}</option>`).join("");
+  md.onchange = () => set({ mic_device: md.value || null });
+
+  $("clipsdir").textContent = s.clips_dir; $("clipsdir").title = s.clips_dir;
+  if (!listening) {
+    $("keys-set").innerHTML = keycaps(S.hotkey_label);
+    $("hk-note").innerHTML = S.hotkey_ok ? "Works while a game is in focus." : `<span class="warn">${esc(S.hotkey_error)}</span>`;
+  }
+}
+function nameFor(exe) {
+  const r = (S.recent_games || []).find((x) => x.exe.toLowerCase() === exe.toLowerCase());
+  return r ? r.name : exe;
+}
+async function poll1() { S = await get("/api/state"); render(); }
+$("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
+$("pickfolder").onclick = () => api("/api/pick-folder").then(() => loadClips());
+
+/* ---------- shortcut recorder */
+let listening = false;
+const VK = { Space: 0x20, PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24, Insert: 0x2d, Delete: 0x2e,
+  Pause: 0x13, ScrollLock: 0x91, Backquote: 0xc0, Minus: 0xbd, Equal: 0xbb, BracketLeft: 0xdb, BracketRight: 0xdd,
+  Semicolon: 0xba, Quote: 0xde, Comma: 0xbc, Period: 0xbe, Slash: 0xbf, Backslash: 0xdc };
+function vkOf(e) {
+  let m;
+  if ((m = e.code.match(/^Key([A-Z])$/))) return [m[1].charCodeAt(0), m[1]];
+  if ((m = e.code.match(/^Digit(\d)$/))) return [48 + +m[1], m[1]];
+  if ((m = e.code.match(/^F(\d{1,2})$/))) return [0x6f + +m[1], "F" + m[1]];
+  if ((m = e.code.match(/^Numpad(\d)$/))) return [0x60 + +m[1], "Num " + m[1]];
+  if (VK[e.code]) return [VK[e.code], e.code.replace(/^(Page)(Up|Down)$/, "Page $2").replace("Backquote", "`")];
+  return null;
+}
+$("hkbtn").onclick = () => {
+  if (listening) return stopListening();
+  listening = true;
+  $("hk").classList.add("listening");
+  $("keys-set").innerHTML = "<kbd>Press keys…</kbd>";
+  $("hkbtn").textContent = "Cancel";
+  $("hk-note").textContent = "Hold Ctrl, Alt or Shift and press a key, or press a function key alone.";
+};
+function stopListening() {
+  listening = false;
+  $("hk").classList.remove("listening");
+  $("hkbtn").textContent = "Change";
+  renderSettings();
+}
+document.addEventListener("keydown", async (e) => {
+  if (!listening) return;
+  e.preventDefault();
+  if (e.key === "Escape") return stopListening();
+  const k = vkOf(e);
+  if (!k) return;
+  const mods = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0);
+  const isF = /^F\d+$/.test(k[1]);
+  if (!mods && !isF) { $("hk-note").innerHTML = '<span class="warn">Add Ctrl, Alt or Shift so normal typing doesn\'t save replays.</span>'; return; }
+  const label = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", k[1]].filter(Boolean).join(" + ");
+  listening = false;
+  const r = await api("/api/hotkey", { mods, vk: k[0], label });
+  stopListening();
+  if (!r.ok) $("hk-note").innerHTML = `<span class="warn">${esc(r.error)}</span>`;
+});
+
+poll();
+</script>
+</body>
+</html>

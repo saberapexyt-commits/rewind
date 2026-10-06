@@ -1,2 +1,77 @@
-# rewind
-Instant replay for your PC. Press Alt + F8, get the last 30 seconds as a clip.
+# Rewind
+
+Instant replay for your PC, a sibling app to AutoClip. Rewind quietly keeps the last 30 seconds of your screen and sound. When something great happens, press **Alt + F8** and that moment is saved as a clip, named after the game you were playing.
+
+## Publish it (exe + website), one time
+
+1. Install Python from python.org (tick "Add python.exe to PATH").
+2. Double-click **`publish.bat`**.
+3. A GitHub page opens with the right boxes already ticked. Press **Generate token**, copy it, and paste it into the window.
+
+That's it. The script:
+- creates a public `rewind` repo on your GitHub and uploads this folder,
+- turns on the website at `https://<your-name>.github.io/rewind/`,
+- tags `v1.0.0`, which builds **Rewind.exe** in the cloud and publishes it as a Release,
+- waits about 5 minutes, then opens the website. Its **Download** button gives `Rewind-windows.zip` (Rewind.exe + ffmpeg).
+
+**Shipping an update:** change `VERSION` in `app.py` (for example to `"1.0.1"`) and run `publish.bat` again. Anyone on an older version gets the new `Rewind.exe` downloaded in the background and sees **Restart to update** in the app (one click, and it relaunches on the new version).
+
+The token is saved in `%APPDATA%\Rewind\publish.json` only if you say yes. Delete that file to forget it.
+
+## Run it without building
+
+Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-click `run_rewind.bat`.
+
+## Using it
+
+- Rewind starts buffering as soon as it opens. The Home tape shows the last 30 seconds filling up, with your audio level.
+- Press the shortcut in any game (default **Alt + F8**). You'll hear a short chime, and the clip lands in `Videos\Rewind`.
+- Closing the window keeps Rewind running in the tray, so the buffer keeps going. Right-click the tray icon to save, pause, or quit.
+- Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
+- Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
+
+## Auto-update
+
+- **Auto-update.** Like AutoClip: Rewind checks GitHub on startup, downloads the new `Rewind.exe` quietly, and swaps itself in when you press **Restart to update**. Each release now also attaches a standalone `Rewind.exe`.
+
+## Highlights
+
+- **No more black clips.** Rewind checks the picture every 4 seconds. If a game comes out black for about 12 seconds, it switches to recording that game's window (Windows Graphics Capture) and remembers the game. HDR screens are captured in 8-bit so they don't come out washed out or black. Settings → Games → *How to record games* lets you force screen or window capture.
+- **Game detection.** Rewind spots the game in front from a built-in list of about 50 popular games, game library folders (Steam, Epic, Riot, Xbox, Battle.net, GOG, EA, Ubisoft), or any app that fills the screen and isn't a browser or video player. Clips are named after the game and saved in a folder per game. Optionally, the buffer runs only while a game is open. A wrongly detected app can be marked "not a game".
+- **Better sound.** There are three new save sounds (chime, shutter, pop) at three volumes, with a preview, and a softer sound when a save fails. Clip audio is cleaner too: a seam-free resampler removes faint crackles, a soft limiter replaces hard clipping on loud moments, 5.1/7.1 headsets are folded down properly, and AAC is now 192k.
+
+## How it works
+
+- **Capture:** ffmpeg's `ddagrab` (Windows Desktop Duplication) grabs the screen straight from the GPU.
+- **Encode:** NVENC on NVIDIA (your RTX 3060 Ti), AMF on AMD, Quick Sync on Intel, or x264 on the CPU as a fallback. Rewind tests which ones work at startup.
+- **Buffer:** video is written to a ring of 2-second files in your temp folder that keep overwriting themselves, so disk use stays flat (roughly 100–250 MB at 30 seconds, 1080p60).
+- **Audio:** game sound (WASAPI loopback) and the mic are mixed in Python and fed to ffmpeg as one steady stream, so it stays in sync even through silence.
+- **Saving:** the newest pieces are joined and trimmed at a keyframe with no re-encode, which takes about a second.
+
+Settings live in `%APPDATA%\Rewind\settings.json`, and errors go to `%APPDATA%\Rewind\rewind.log`.
+
+## Tested vs. untested
+
+Tested off Windows with a fake screen and audio track: the rolling buffer, saving (including trimming to the exact length), clip naming, thumbnails, the whole local API, video streaming, and every page of the UI.
+
+Not tested yet, because they only exist on Windows:
+- Real screen capture with `ddagrab` and the NVENC/AMF/QSV paths.
+- Game and mic audio through PyAudioWPatch.
+- The global shortcut, tray icon, frameless window, sounds, and the exe build.
+- Real game detection and window capture (`gfxcapture`). The black-clip switch was tested with a fake black screen and a fake Valorant.
+- `publish.py` against the real GitHub. It was tested end to end against a fake GitHub server.
+
+Expect the first real run to need a fix or two. If something breaks, check `rewind.log` and paste the error.
+
+## Good to know
+
+- **Fullscreen games:** borderless or windowed fullscreen records most reliably. Some exclusive-fullscreen games show black frames.
+- **Shortcut conflicts:** Alt + F10 is NVIDIA's own instant-replay key, which is why Rewind defaults to Alt + F8. If a shortcut is taken, Rewind says so and keeps the old one.
+- **Switching headphones/speakers:** toggle game sound off and on in Settings so Rewind picks up the new device.
+
+## Ideas for next
+
+- A "Send to AutoClip" button on each clip.
+- A second shortcut that bookmarks a moment without saving.
+- Start with Windows.
+- Per-game folders and a quick trim before saving.
