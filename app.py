@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.8"
+VERSION = "1.6.0"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -94,6 +94,17 @@ def load_settings():
     return s
 
 
+def trim_log(limit=1_000_000, keep=300_000):
+    """The log only needs the recent past, so don't let it grow forever."""
+    try:
+        if LOG_FILE.stat().st_size > limit:
+            data = LOG_FILE.read_bytes()[-keep:]
+            data = data[data.find(b"\n") + 1:]
+            LOG_FILE.write_bytes(data)
+    except OSError:
+        pass
+
+
 def save_settings(s):
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     SETTINGS_FILE.write_text(json.dumps(s, indent=2), encoding="utf-8")
@@ -111,6 +122,7 @@ class App:
         self.rec.long_end_cb = self.stop_long
         self.rec.persist = lambda k, v: (self.settings.__setitem__(k, v), save_settings(self.settings))
         self.window = None
+        self.winmgr = None
         self.tray = None
         self.events = []  # toasts for the UI: saved / failed
         self.monitors = winbits.monitors()
@@ -1109,6 +1121,23 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, APP.mics)
             if path.startswith("/api/window/") and APP.window:
                 w, act = APP.window, path.rsplit("/", 1)[1]
+                mgr = APP.winmgr
+                if mgr and act in ("drag-start", "drag-move", "drag-end", "resize-start", "resize-move", "resize-end", "state", "maximize"):
+                    if act == "drag-start":
+                        mgr.drag_start()
+                    elif act == "drag-move":
+                        mgr.drag_move()
+                    elif act == "drag-end":
+                        mgr.drag_end()
+                    elif act == "resize-start":
+                        mgr.resize_start(body.get("edge", ""))
+                    elif act == "resize-move":
+                        mgr.resize_move()
+                    elif act == "resize-end":
+                        mgr.resize_end()
+                    elif act == "maximize":
+                        mgr.toggle_maximize()
+                    return self._send(200, {"ok": True, "state": mgr.state})
                 if act == "minimize":
                     w.minimize()
                 elif act == "maximize":
@@ -1199,6 +1228,8 @@ def main():
     threading.Thread(target=APP.find_gpus, daemon=True).start()
     threading.Thread(target=APP.update_loop, daemon=True).start()
     def tidy_clips():
+        engine.clean_temp()
+        trim_log()
         folder = APP.settings["clips_dir"]
         engine.clean_stale_parts(folder)
         n = engine.repair_library(folder, log)
@@ -1222,6 +1253,15 @@ def main():
         "Rewind", f"http://127.0.0.1:{APP.port}/", width=1260, height=800, min_size=(900, 600),
         frameless=True, easy_drag=False, background_color="#0E1219", hidden=hidden)
     APP.window.events.closing += APP.on_closing
+    if os.name == "nt":
+        import winmgr
+        def remember(geom):
+            APP.settings["window"] = geom
+            save_settings(APP.settings)
+        APP.winmgr = winmgr.Manager(lambda: APP.window, remember)
+        saved_geom = APP.settings.get("window")
+        if saved_geom:
+            APP.window.events.shown += lambda: threading.Timer(0.5, lambda: APP.winmgr.apply(saved_geom)).start()
     webview.start(private_mode=False)
     APP.quit()
 

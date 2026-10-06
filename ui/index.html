@@ -832,6 +832,61 @@ function go(p) {
 document.querySelectorAll(".nav").forEach((n) => n.addEventListener("click", () => n.dataset.editor ? Editor.open() : go(n.dataset.page)));
 document.querySelectorAll("[data-goto]").forEach((n) => n.addEventListener("click", () => go(n.dataset.goto)));
 
+/* ---------- moving, snapping and resizing the window (native window only) */
+(() => {
+  const NO_DRAG = "button, input, select, textarea, a, label, [data-nodrag]";
+  const inDrag = (e) => !!(S && S.native_window) && e.target.closest && !!e.target.closest(".pywebview-drag-region") && !e.target.closest(NO_DRAG);
+  let drag = null, rz = null, inflight = false, dirty = false, state = "normal";
+  const grips = [["n", "top:0;left:12px;right:12px;height:5px;cursor:ns-resize"], ["s", "bottom:0;left:12px;right:12px;height:5px;cursor:ns-resize"],
+    ["w", "left:0;top:12px;bottom:12px;width:5px;cursor:ew-resize"], ["e", "right:0;top:12px;bottom:12px;width:5px;cursor:ew-resize"],
+    ["nw", "top:0;left:0;width:12px;height:12px;cursor:nwse-resize"], ["ne", "top:0;right:0;width:12px;height:12px;cursor:nesw-resize"],
+    ["sw", "bottom:0;left:0;width:12px;height:12px;cursor:nesw-resize"], ["se", "bottom:0;right:0;width:12px;height:12px;cursor:nwse-resize"]];
+  const wrap = document.createElement("div");
+  wrap.style.cssText = "position:fixed;inset:0;pointer-events:none;z-index:2147483000";
+  grips.forEach(([edge, css]) => { const g = document.createElement("div"); g.dataset.edge = edge; g.style.cssText = "position:absolute;pointer-events:auto;" + css; wrap.appendChild(g); });
+  document.body.appendChild(wrap);
+  const setState = (s) => { state = s || "normal"; wrap.style.display = state === "normal" && S && S.native_window ? "" : "none"; };
+  const pump = (url) => {                        // at most one move request in flight, always the latest cursor position
+    if (inflight) { dirty = true; return; }
+    inflight = true;
+    api(url, {}).finally(() => { inflight = false; if (dirty) { dirty = false; pump(url); } });
+  };
+  const refresh = () => api("/api/window/state", {}).then((r) => r && setState(r.state)).catch(() => {});
+
+  document.addEventListener("mousedown", (e) => { if (inDrag(e)) e.stopPropagation(); }, true);   // our drag replaces the built-in one
+  document.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0) return;
+    const g = e.target.closest && e.target.closest("[data-edge]");
+    if (g && wrap.contains(g)) {
+      e.preventDefault(); g.setPointerCapture(e.pointerId);
+      rz = { el: g, ready: false };
+      api("/api/window/resize-start", { edge: g.dataset.edge }).then(() => { rz && (rz.ready = true); });
+      return;
+    }
+    if (!inDrag(e)) return;
+    e.preventDefault();
+    const el = e.target.closest(".pywebview-drag-region");
+    el.setPointerCapture(e.pointerId);
+    drag = { el, ready: false, moved: false };
+    api("/api/window/drag-start", {}).then(() => { drag && (drag.ready = true); });
+  }, true);
+  addEventListener("pointermove", (e) => {
+    if (rz) { if (e.buttons === 0) return endResize(); if (rz.ready) pump("/api/window/resize-move"); return; }
+    if (drag) { if (e.buttons === 0) return endDrag(); drag.moved = true; if (drag.ready) pump("/api/window/drag-move"); }
+  });
+  const endResize = () => { if (!rz) return; rz = null; setTimeout(() => api("/api/window/resize-end", {}).then(refresh), 30); };
+  const endDrag = () => {
+    if (!drag) return;
+    const moved = drag.moved; drag = null;
+    setTimeout(() => api("/api/window/drag-end", {}).then((r) => r && setState(r.state)), 30);
+  };
+  addEventListener("pointerup", () => { endResize(); endDrag(); });
+  addEventListener("pointercancel", () => { endResize(); endDrag(); });
+  document.addEventListener("dblclick", (e) => { if (inDrag(e)) api("/api/window/maximize", {}).then((r) => r && setState(r.state)); });
+  let t = null; addEventListener("resize", () => { clearTimeout(t); t = setTimeout(refresh, 200); });
+  window.__windowReady = () => setState(state);
+})();
+
 /* ---------- window controls (native window only) */
 document.querySelectorAll("[data-w]").forEach((b) => b.addEventListener("click", () => api("/api/window/" + b.dataset.w)));
 $("pin").addEventListener("click", () => { const on = !$("pin").classList.contains("on"); $("pin").classList.toggle("on", on); api("/api/window/pin", { on }); });
@@ -853,6 +908,7 @@ function render() {
   const state = st.state;
   document.body.className = state === "buffering" || state === "saving" ? "" : state === "error" ? "error" : "paused";
   $("wc").hidden = !S.native_window;
+  if (window.__windowReady) window.__windowReady();
   $("ver").textContent = "v" + S.version;
   $("sitebtn").hidden = !S.website;
   $("updatebtn").hidden = !S.update;

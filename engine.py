@@ -1145,6 +1145,21 @@ def seal(part, final, max_len=None, log=print):
     os.replace(part, final)
 
 
+def clean_temp(max_age=3600):
+    """Work folders an editor export, a save or a long recording left behind when something crashed."""
+    now = time.time()
+    try:
+        for pat in ("rewind-edit-*", "rewind-save-*", "rewind-long-*"):
+            for p in Path(tempfile.gettempdir()).glob(pat):
+                try:
+                    if p.is_dir() and now - p.stat().st_mtime > max_age:
+                        shutil.rmtree(p, ignore_errors=True)
+                except OSError:
+                    pass
+    except OSError:
+        pass
+
+
 def clean_stale_parts(folder):
     """Half-written files left behind by a crash or a power cut."""
     try:

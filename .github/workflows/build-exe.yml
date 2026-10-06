@@ -23,7 +23,7 @@ jobs:
         shell: pwsh
         run: |
           pip install -r requirements.txt pyinstaller
-          pyinstaller --noconfirm --hidden-import games --hidden-import overlay --onefile --noconsole --name Rewind --icon rewind.ico `
+          pyinstaller --noconfirm --hidden-import games --hidden-import overlay --hidden-import winmgr --onefile --noconsole --name Rewind --icon rewind.ico `
             --add-data "ui;ui" --add-data "rewind.ico;." --add-data "logo.png;." --add-data "repo.json;." `
             --hidden-import pystray._win32 --distpath dist/Rewind app.py
 
