@@ -481,7 +481,7 @@ class Recorder:
         self.notice = ""
         self.dark_streak = 0
         self.last_check = None
-        self.buf = Path(tempfile.gettempdir()) / "rewind-buffer"
+        self.buf = Path(tempfile.gettempdir()) / ("rewind-buffer-test" if TEST else "rewind-buffer")
         self.proc = None
         self.pump = None
         self.order = deque(maxlen=400)  # segment names in the order ffmpeg opened them

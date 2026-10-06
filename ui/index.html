@@ -345,6 +345,50 @@
 
   footer { background: none; }
   @media (max-width: 860px) { body { grid-template-columns: 68px 1fr; } .keychip { display: none; } }
+
+  /* ===== player + trim editor ===== */
+  .modal { background: rgba(2, 2, 3, .88); gap: 14px; grid-auto-flow: column; grid-template-columns: 56px minmax(0, 1060px) 56px; justify-content: center; align-items: center; padding: 20px; }
+  .navarrow { width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(255,255,255,.06); color: #fff; display: grid; place-items: center; }
+  .navarrow:hover { background: rgba(255,255,255,.14); } .navarrow:disabled { opacity: .25; cursor: default; }
+  .navarrow svg { width: 24px; height: 24px; }
+  .viewer { background: #0e0e10; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+  .vhead { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
+  .vhead input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 16px; font-weight: 700; }
+  .vhead input:hover { background: #17171a; } .vhead input:focus { background: #17171a; border-color: var(--line-2); outline: 0; }
+  .vmeta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
+  .vstage { position: relative; background: #000; display: grid; place-items: center; height: min(52vh, 560px); cursor: pointer; }
+  .vstage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .vbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 14px 8px; background: linear-gradient(transparent, rgba(0,0,0,.78)); opacity: 0; transition: opacity .15s; cursor: default; }
+  .vstage:hover .vbar, .vstage.paused .vbar { opacity: 1; }
+  .vprog { height: 4px; border-radius: 2px; background: rgba(255,255,255,.25); margin-bottom: 6px; position: relative; cursor: pointer; }
+  .vprog i { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 2px; background: #fff; }
+  .vctl { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .vctl button { width: 34px; height: 34px; border: 0; border-radius: 8px; background: none; color: #fff; display: grid; place-items: center; }
+  .vctl button:hover { background: rgba(255,255,255,.14); } .vctl svg { width: 20px; height: 20px; }
+  .vctl input[type=range] { width: 84px; accent-color: #fff; }
+  .grow { flex: 1; }
+
+  .editor { padding: 12px 18px 6px; }
+  .ruler { position: relative; height: 26px; margin: 0 0 4px; color: #9a9aa5; font-size: 12px; font-variant-numeric: tabular-nums; user-select: none; }
+  .ruler span { position: absolute; top: 0; transform: translateX(-50%); }
+  .ruler span:first-child { transform: none; } .ruler span.last { transform: translateX(-100%); }
+  .ruler i { position: absolute; bottom: 0; width: 1px; height: 5px; background: #4a4a54; }
+  .ruler i.big { height: 9px; background: #6a6a76; }
+  .strip { position: relative; height: 60px; border-radius: 9px; background: #17171a; user-select: none; touch-action: none; cursor: pointer; }
+  .strip canvas { position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 9px; }
+  .dim { position: absolute; top: 0; bottom: 0; background: rgba(0,0,0,.66); pointer-events: none; }
+  .dim.l { left: 0; border-radius: 9px 0 0 9px; } .dim.r { right: 0; border-radius: 0 9px 9px 0; }
+  .sel { position: absolute; top: -2px; bottom: -2px; border: 2px solid #fff; border-radius: 9px; pointer-events: none; }
+  .h { position: absolute; top: -2px; bottom: -2px; width: 14px; background: #fff; pointer-events: auto; cursor: ew-resize; }
+  .h::after { content: ""; position: absolute; left: 50%; top: 50%; width: 2px; height: 20px; margin: -10px 0 0 -1px; border-radius: 1px; background: #222; }
+  .h.l { left: -9px; border-radius: 8px 0 0 8px; } .h.r { right: -9px; border-radius: 0 8px 8px 0; }
+  .playhead { position: absolute; top: -8px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--accent); pointer-events: none; box-shadow: 0 0 0 1px rgba(0,0,0,.4); }
+  .playhead::before { content: ""; position: absolute; left: -4px; top: 0; width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  .erow { display: flex; align-items: center; gap: 10px; padding: 14px 0 10px; flex-wrap: wrap; }
+  .tinfo { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; } .tinfo b { color: var(--text); }
+  .vhint { margin: 0; padding: 4px 18px 14px; color: var(--dim); font-size: 12.5px; text-align: center; }
+  .vhint kbd { padding: 0 6px; font-size: 11px; }
+  @media (max-width: 860px) { .modal { grid-template-columns: minmax(0, 1fr); } .navarrow { display: none; } .vmeta { display: none; } }
 </style>
 </head>
 <body class="paused">
@@ -546,16 +590,48 @@
 </footer>
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Replay player">
-  <div class="player">
-    <video id="video" controls playsinline></video>
-    <div class="bar">
+  <button class="navarrow" id="prevclip" aria-label="Previous clip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
+  <div class="viewer">
+    <div class="vhead">
       <input type="text" id="cliptitle" aria-label="Clip name" spellcheck="false">
-      <button class="btn" id="rename">Rename</button>
+      <span class="vmeta" id="vmeta"></span>
       <button class="btn" id="reveal">Show in folder</button>
       <button class="btn danger" id="delete">Delete</button>
-      <button class="btn x" id="closeplayer" aria-label="Close player">Close</button>
+      <button class="btn" id="closeplayer" aria-label="Close player">Close</button>
     </div>
+    <div class="vstage" id="vstage">
+      <video id="video" playsinline></video>
+      <div class="vbar">
+        <div class="vprog" id="vprog"><i id="vprogfill"></i></div>
+        <div class="vctl">
+          <button id="vplay" aria-label="Play or pause"></button>
+          <span id="vtime">0:00 / 0:00</span>
+          <span class="grow"></span>
+          <button id="vmute" aria-label="Mute"></button>
+          <input type="range" id="vvol" min="0" max="1" step="0.05" value="1" aria-label="Volume">
+          <button id="vfull" aria-label="Full screen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+        </div>
+      </div>
+    </div>
+    <div class="editor">
+      <div class="ruler" id="ruler"></div>
+      <div class="strip" id="strip">
+        <canvas id="filmstrip"></canvas>
+        <div class="dim l" id="diml"></div><div class="dim r" id="dimr"></div>
+        <div class="sel" id="sel"><span class="h l" id="hl"></span><span class="h r" id="hr"></span></div>
+        <div class="playhead" id="ph"></div>
+      </div>
+      <div class="erow">
+        <span class="tinfo" id="tinfo">Drag the white handles to trim this clip.</span>
+        <span class="grow"></span>
+        <button class="btn" id="trimreset" hidden>Reset</button>
+        <button class="btn" id="trimcopy" disabled>Save as copy</button>
+        <button class="btn primary" id="trimreplace" disabled>Replace original</button>
+      </div>
+    </div>
+    <p class="vhint">Use <kbd>←</kbd> and <kbd>→</kbd> to switch clips, <kbd>Space</kbd> to play, <kbd>Del</kbd> to delete.</p>
   </div>
+  <button class="navarrow" id="nextclip" aria-label="Next clip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5l7 7-7 7"/></svg></button>
 </div>
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
@@ -757,38 +833,230 @@ function niceTitle(t) {
   return m ? m[1] : t;
 }
 
+/* ---------- player + trim editor */
 let current = null;
-function openPlayer(name) {
+const V = { dur: 0, ts: 0, te: 0, drag: null, strip: 0 };
+const vid = $("video");
+const ICON = {
+  play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>',
+  pause: '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4.5" width="4" height="15" rx="1"/><rect x="14" y="4.5" width="4" height="15" rx="1"/></svg>',
+  vol: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4zM15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
+  mute: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H3v6h3l5 4zM16 9l5 6M21 9l-5 6"/></svg>',
+};
+const tfmt = (t) => `${Math.floor(t / 60)}:${(Math.floor(t % 60)).toString().padStart(2, "0")}.${Math.floor((t % 1) * 10)}`;
+const trimmed = () => V.dur && (V.ts > 0.05 || V.te < V.dur - 0.05);
+const xOf = (t) => (t / V.dur) * V.strip;
+
+function playerList() { return filter ? clips.filter((c) => gameOf(c) === filter) : clips; }
+function neighbours() {
+  const list = playerList(), i = list.findIndex((c) => c.name === current);
+  return { list, i, prev: i > 0 ? list[i - 1] : null, next: i >= 0 && i < list.length - 1 ? list[i + 1] : null };
+}
+
+function openPlayer(name, bust) {
   current = name;
-  $("video").src = "/media/" + encodeURIComponent(name);
+  V.dur = 0; V.drag = null;
+  const url = "/media/" + encodeURIComponent(name) + (bust ? "?v=" + Date.now() : "");
+  vid.src = url;
   $("cliptitle").value = name.split("/").pop().replace(/\.mp4$/, "");
+  const c = clips.find((x) => x.name === name);
+  $("vmeta").textContent = c ? `${c.size_mb} MB · ${when(c.mtime)}` : "";
   resetDelete();
   $("modal").classList.add("on");
-  $("video").play().catch(() => {});
+  $("vstage").classList.add("paused");
+  $("ruler").innerHTML = ""; clearStrip(); updateTrimUi();
+  const n = neighbours(); $("prevclip").disabled = !n.prev; $("nextclip").disabled = !n.next;
+  vid.play().catch(() => {});
+  buildFilmstrip(url);
 }
-function closePlayer() { $("video").pause(); $("video").removeAttribute("src"); $("video").load(); $("modal").classList.remove("on"); }
+function closePlayer() {
+  vid.pause(); vid.removeAttribute("src"); vid.load();
+  $("modal").classList.remove("on");
+  V.filmToken = (V.filmToken || 0) + 1;
+}
+function go2(delta) { const n = neighbours(), t = delta < 0 ? n.prev : n.next; if (t) openPlayer(t.name); }
+
+vid.addEventListener("loadedmetadata", () => {
+  V.dur = vid.duration; V.ts = 0; V.te = V.dur;
+  layoutEditor();
+});
+function layoutEditor() {
+  if (!V.dur) return;
+  V.strip = $("strip").clientWidth;
+  buildRuler(); updateSel(); updateTrimUi();
+}
+addEventListener("resize", () => { if ($("modal").classList.contains("on")) layoutEditor(); });
+
+function buildRuler() {
+  const steps = [1, 2, 5, 10, 15, 30, 60, 120, 300], W = V.strip;
+  const step = steps.find((s) => (s / V.dur) * W >= 70) || 300;
+  let h = "";
+  for (let t = 0; t <= V.dur + 0.001; t += step) h += `<span style="left:${xOf(t)}px">${clock(t)}</span>`;
+  const sub = step / 5;
+  for (let t = 0; t <= V.dur; t += sub) h += `<i class="${Math.abs(t / step - Math.round(t / step)) < 1e-6 ? "big" : ""}" style="left:${xOf(t)}px"></i>`;
+  $("ruler").innerHTML = h;
+}
+function clearStrip() { const c = $("filmstrip"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
+async function buildFilmstrip(url) {
+  const token = V.filmToken = (V.filmToken || 0) + 1;
+  const fv = document.createElement("video");
+  fv.muted = true; fv.preload = "auto"; fv.src = url;
+  await new Promise((r) => { fv.onloadedmetadata = r; fv.onerror = r; });
+  if (token !== V.filmToken || !fv.duration) return;
+  const c = $("filmstrip"), dpr = devicePixelRatio || 1;
+  const W = $("strip").clientWidth, H = $("strip").clientHeight;
+  c.width = W * dpr; c.height = H * dpr;
+  const g = c.getContext("2d"), tile = Math.max(60, Math.round(H * 16 / 9)), n = Math.ceil(W / tile);
+  for (let i = 0; i < n; i++) {
+    if (token !== V.filmToken) return;
+    fv.currentTime = Math.min(fv.duration - 0.05, ((i + 0.5) / n) * fv.duration);
+    await new Promise((r) => { fv.onseeked = r; setTimeout(r, 1500); });
+    g.drawImage(fv, i * tile * dpr, 0, tile * dpr, H * dpr);
+  }
+  fv.removeAttribute("src"); fv.load();
+}
+
+function updateSel() {
+  if (!V.dur) return;
+  const l = xOf(V.ts), r = xOf(V.te);
+  $("sel").style.left = l + "px"; $("sel").style.width = Math.max(4, r - l) + "px";
+  $("diml").style.width = l + "px"; $("dimr").style.width = (V.strip - r) + "px";
+}
+function updateTrimUi() {
+  const t = trimmed();
+  $("trimreset").hidden = !t;
+  $("trimcopy").disabled = !t; $("trimreplace").disabled = !t;
+  $("tinfo").innerHTML = !V.dur ? "Loading…" : t
+    ? `Keeping <b>${tfmt(V.ts)}</b> to <b>${tfmt(V.te)}</b> · ${(V.te - V.ts).toFixed(1)} s of ${V.dur.toFixed(1)} s`
+    : "Drag the white handles to trim this clip.";
+}
+function syncPlayhead() {
+  if (!V.dur) return;
+  const t = vid.currentTime;
+  $("ph").style.left = xOf(t) + "px";
+  $("vprogfill").style.width = (t / V.dur) * 100 + "%";
+  $("vtime").textContent = `${clock(t)} / ${clock(V.dur)}`;
+}
+vid.addEventListener("timeupdate", () => {
+  if (V.te && vid.currentTime >= V.te - 0.02 && !vid.paused) { vid.pause(); vid.currentTime = V.te; }
+  syncPlayhead();
+});
+function setPlayIcon() { $("vplay").innerHTML = vid.paused ? ICON.play : ICON.pause; $("vstage").classList.toggle("paused", vid.paused); }
+vid.addEventListener("play", setPlayIcon); vid.addEventListener("pause", setPlayIcon); setPlayIcon();
+function togglePlay() {
+  if (vid.paused) { if (vid.currentTime >= V.te - 0.05 || vid.currentTime < V.ts) vid.currentTime = V.ts; vid.play().catch(() => {}); } else vid.pause();
+}
+$("vplay").onclick = (e) => { e.stopPropagation(); togglePlay(); };
+vid.addEventListener("click", togglePlay);
+$("vprog").addEventListener("click", (e) => { const r = $("vprog").getBoundingClientRect(); vid.currentTime = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)) * V.dur; });
+$("vfull").onclick = () => { const s = $("vstage"); document.fullscreenElement ? document.exitFullscreen() : s.requestFullscreen && s.requestFullscreen(); };
+function setVol(v, save) {
+  vid.volume = v; vid.muted = v === 0; $("vvol").value = v;
+  $("vmute").innerHTML = v === 0 ? ICON.mute : ICON.vol;
+  if (save) try { localStorage.setItem("rewind-vol", String(v)); } catch (e) {}
+}
+$("vvol").oninput = (e) => setVol(Number(e.target.value), true);
+$("vmute").onclick = () => setVol(vid.volume === 0 ? 1 : 0, true);
+try { setVol(Number(localStorage.getItem("rewind-vol") ?? 1), false); } catch (e) { setVol(1, false); }
+
+/* trim handles and scrubbing */
+function tAt(e) { const r = $("strip").getBoundingClientRect(); return Math.max(0, Math.min(V.dur, ((e.clientX - r.left) / r.width) * V.dur)); }
+function startDrag(kind) {
+  return (e) => { e.preventDefault(); e.stopPropagation(); V.drag = kind; e.target.setPointerCapture?.(e.pointerId); if (kind === "seek") { vid.pause(); vid.currentTime = tAt(e); } };
+}
+$("hl").addEventListener("pointerdown", startDrag("l"));
+$("hr").addEventListener("pointerdown", startDrag("r"));
+$("strip").addEventListener("pointerdown", (e) => { if (e.target === $("hl") || e.target === $("hr")) return; startDrag("seek")(e); });
+addEventListener("pointermove", (e) => {
+  if (!V.drag || !V.dur) return;
+  const t = tAt(e), min = 0.5;
+  if (V.drag === "l") { V.ts = Math.min(t, V.te - min); vid.pause(); vid.currentTime = V.ts; }
+  else if (V.drag === "r") { V.te = Math.max(t, V.ts + min); vid.pause(); vid.currentTime = V.te; }
+  else vid.currentTime = t;
+  updateSel(); updateTrimUi();
+});
+addEventListener("pointerup", () => { V.drag = null; });
+$("trimreset").onclick = () => { V.ts = 0; V.te = V.dur; updateSel(); updateTrimUi(); };
+
+async function doTrim(mode) {
+  if (!trimmed()) return;
+  const btns = [$("trimcopy"), $("trimreplace"), $("trimreset")];
+  btns.forEach((b) => b.disabled = true);
+  $("tinfo").textContent = mode === "copy" ? "Saving a trimmed copy…" : "Replacing the original…";
+  const name = current, args = { name, start: V.ts, end: V.te, mode };
+  if (mode === "replace") { vid.pause(); vid.removeAttribute("src"); vid.load(); V.filmToken++; }
+  let r;
+  try { r = await api("/api/clips/trim", args); } catch (e) { r = { ok: false, error: "Rewind didn't respond." }; }
+  if (!r.ok) {
+    toast({ kind: "error", message: r.error });
+    if (mode === "replace") openPlayer(name, true);
+    else { btns.forEach((b) => b.disabled = false); updateTrimUi(); }
+    return;
+  }
+  await loadClips();
+  if (mode === "replace") { openPlayer(name, true); toastNote("Clip trimmed", "The original now holds only the part you kept."); }
+  else { toastNote("Saved a trimmed copy", r.name.split("/").pop().replace(/\.mp4$/, ""), () => openPlayer(r.name)); updateTrimUi(); }
+}
+$("trimcopy").onclick = () => doTrim("copy");
+$("trimreplace").onclick = () => {
+  if ($("trimreplace").dataset.armed !== "1") {
+    $("trimreplace").dataset.armed = "1"; $("trimreplace").textContent = "Replace original? Click again";
+    setTimeout(() => { $("trimreplace").dataset.armed = ""; $("trimreplace").textContent = "Replace original"; }, 3500);
+    return;
+  }
+  $("trimreplace").dataset.armed = ""; $("trimreplace").textContent = "Replace original";
+  doTrim("replace");
+};
+function toastNote(title, sub, onWatch) {
+  const t = document.createElement("div");
+  t.className = "toast";
+  t.innerHTML = `<b>${esc(title)}</b><small>${esc(sub)}</small>` + (onWatch ? '<div class="acts"><button class="btn primary">Watch</button></div>' : "");
+  if (onWatch) t.querySelector("button").onclick = () => { onWatch(); t.remove(); };
+  $("toasts").appendChild(t);
+  setTimeout(() => t.remove(), 6000);
+}
+
+/* header actions */
 $("closeplayer").onclick = closePlayer;
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closePlayer(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("modal").classList.contains("on") && !listening) closePlayer(); });
+$("prevclip").onclick = () => go2(-1); $("nextclip").onclick = () => go2(1);
 $("reveal").onclick = () => api("/api/clips/reveal", { name: current });
-$("rename").onclick = async () => {
-  const r = await api("/api/clips/rename", { name: current, title: $("cliptitle").value });
-  if (r.ok) { current = r.name; $("cliptitle").value = r.name.split("/").pop().replace(/\.mp4$/, ""); loadClips(); }
-  else toast({ kind: "error", message: r.error });
-};
-$("cliptitle").addEventListener("keydown", (e) => { if (e.key === "Enter") $("rename").click(); });
+async function renameClip() {
+  const title = $("cliptitle").value.trim();
+  if (!title || title === current.split("/").pop().replace(/\.mp4$/, "")) return;
+  const r = await api("/api/clips/rename", { name: current, title });
+  if (r.ok) { const t = vid.currentTime, was = !vid.paused; current = r.name; vid.src = "/media/" + encodeURIComponent(r.name); vid.currentTime = t; if (was) vid.play().catch(() => {}); loadClips(); }
+  else { toast({ kind: "error", message: r.error }); $("cliptitle").value = current.split("/").pop().replace(/\.mp4$/, ""); }
+}
+$("cliptitle").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { renameClip(); $("cliptitle").blur(); } if (e.key === "Escape") $("cliptitle").blur(); });
+$("cliptitle").addEventListener("blur", renameClip);
 let delTimer = null;
 function resetDelete() { clearTimeout(delTimer); $("delete").classList.remove("armed"); $("delete").textContent = "Delete"; }
-$("delete").onclick = async () => {
+async function deleteClip() {
+  const n = neighbours();
+  vid.pause(); vid.removeAttribute("src"); vid.load();
+  await api("/api/clips/delete", { name: current });
+  await loadClips();
+  const next = n.next || n.prev;
+  if (next && clips.some((c) => c.name === next.name)) openPlayer(next.name); else closePlayer();
+}
+$("delete").onclick = () => {
   if (!$("delete").classList.contains("armed")) {
     $("delete").classList.add("armed"); $("delete").textContent = "Move to Recycle Bin?";
     delTimer = setTimeout(resetDelete, 3500);
     return;
   }
-  closePlayer();
-  await api("/api/clips/delete", { name: current });
-  loadClips();
+  resetDelete(); deleteClip();
 };
+document.addEventListener("keydown", (e) => {
+  if (!$("modal").classList.contains("on") || (typeof listening !== "undefined" && listening)) return;
+  if (e.target.tagName === "INPUT" && e.target.type === "text") return;
+  if (e.key === "Escape") closePlayer();
+  else if (e.key === "ArrowLeft") { e.preventDefault(); go2(-1); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); go2(1); }
+  else if (e.key === " ") { e.preventDefault(); togglePlay(); }
+  else if (e.key === "Delete") { $("delete").click(); }
+});
 
 /* ---------- settings */
 let settingsKey = "";

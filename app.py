@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.3"
+VERSION = "1.0.4"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -276,7 +276,7 @@ class App:
         return [p for p in list(d.glob("*.mp4")) + list(d.glob("*/*.mp4")) if not p.parent.name.startswith(".")]
 
     def clip_duration(self, p, st):
-        key = (str(p), st.st_mtime)
+        key = (str(p), st.st_mtime, st.st_size)
         if key not in self._durations:
             try:
                 self._durations[key] = round(engine.duration_of(p))
@@ -294,6 +294,66 @@ class App:
                         "size_mb": round(st.st_size / 1e6, 1), "mtime": st.st_mtime,
                         "duration": self.clip_duration(p, st)})
         return out
+
+    def trim_clip(self, b):
+        """Cut a clip to [start, end]. mode "copy" saves a new clip next to it, "replace" overwrites the original."""
+        src = self.clip_path(b["name"])
+        start, end = max(0.0, float(b["start"])), float(b["end"])
+        total = engine.duration_of(src)
+        end = min(end, total) if total else end
+        if end - start < 0.5:
+            return {"ok": False, "error": "Pick at least half a second to keep."}
+        if start < 0.05 and total and end > total - 0.05:
+            return {"ok": False, "error": "That's the whole clip. Drag the handles to cut it first."}
+        tmp = src.with_name(f"trim-{secrets.token_hex(4)}.part")
+        s = self.settings
+
+        def attempt(enc):
+            cmd = [engine.FFMPEG, "-hide_banner", "-v", "error", "-y", "-ss", f"{start:.3f}", "-i", str(src),
+                   "-t", f"{end - start:.3f}", "-map", "0:v:0", "-map", "0:a?"]
+            cmd += engine.video_args(enc, s.get("quality", "balanced"), int(s.get("fps", 60)))
+            cmd += ["-c:a", "copy", "-movflags", "+faststart", "-f", "mp4", str(tmp)]
+            return engine.run(cmd, timeout=300)
+
+        try:
+            r = attempt(self.rec.encoder)
+            if r.returncode != 0 and self.rec.encoder != "cpu":
+                r = attempt("cpu")
+            if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 1000:
+                log(f"trim failed: {r.stderr[-300:]}")
+                return {"ok": False, "error": "Couldn't cut that clip. See rewind.log for details."}
+            if b.get("mode") == "replace":
+                st = src.stat()
+                for i in range(10):  # the player may still be letting go of the file
+                    try:
+                        os.replace(tmp, src)
+                        break
+                    except PermissionError:
+                        if i == 9:
+                            raise
+                        time.sleep(0.3)
+                os.utime(src, (st.st_atime, st.st_mtime))
+                t = engine.thumb_path(src)
+                if t.exists():
+                    t.unlink()
+                dest = src
+            else:
+                base = src.stem + " (trimmed)"
+                dest, n = src.with_name(base + ".mp4"), 2
+                while dest.exists():
+                    dest, n = src.with_name(f"{base} {n}.mp4"), n + 1
+                os.replace(tmp, dest)
+            log(f"trimmed {src.name} {start:.1f}-{end:.1f}s ({b.get('mode')})")
+            return {"ok": True, "name": dest.relative_to(Path(s["clips_dir"]).resolve()).as_posix()}
+        except Exception as e:
+            log(f"trim error: {e}")
+            return {"ok": False, "error": "Couldn't cut that clip: " + str(e)}
+        finally:
+            if tmp.exists():
+                try:
+                    tmp.unlink()
+                except OSError:
+                    pass
 
     def clip_path(self, name):
         """A clip in the clips folder or one game folder below it. Nothing else."""
@@ -509,6 +569,8 @@ class Handler(BaseHTTPRequestHandler):
                 if t.exists():
                     t.unlink()
                 return self._send(200, {"ok": True})
+            if path == "/api/clips/trim":
+                return self._send(200, APP.trim_clip(body))
             if path == "/api/clips/rename":
                 p = APP.clip_path(body["name"])
                 q = p.parent / (engine.safe_name(body["title"]) + ".mp4")
@@ -586,6 +648,12 @@ def open_browser_window(port):
 
 def main():
     global APP
+    if os.name == "nt" and not engine.TEST and os.environ.get("REWIND_HEADLESS") != "1":
+        import ctypes
+        ctypes.windll.kernel32.CreateMutexW(None, False, "Local\\RewindSingleInstance")
+        if ctypes.windll.kernel32.GetLastError() == 183:  # already running: two copies would share one buffer
+            ctypes.windll.user32.MessageBoxW(0, "Rewind is already running. Look for its icon in the system tray.", "Rewind", 0x40)
+            return
     APP = App()
     log(f"Rewind {VERSION} starting")
     start_server()

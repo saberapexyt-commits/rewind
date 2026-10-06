@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.4
+
+- **New clip player** with a timeline, a thumbnail strip, volume, full screen and ← → to move between clips.
+- **Trim clips.** Drag the handles, then **Save as copy** or **Replace original**.
+- Only one Rewind can run at a time, so two copies can't write into the same buffer and garble clips.
+
 ## 1.0.3
 
 - Redesigned the app: a flat, dark clip library (icon rail, status and shortcut chips up top, clips grouped by day with length, size and a Watch button) instead of the neon dashboard.
