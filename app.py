@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.2"
+VERSION = "1.5.3"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -559,6 +559,47 @@ class App:
         self.ext_files[fid] = str(path)
         return {"ok": True, "id": "ext:" + fid, "name": Path(path).stem}
 
+    PROJECT_FILE = "editor_project.json"
+
+    def save_project(self, body):
+        """Keep the edit in progress on disk so it survives closing Rewind and updates."""
+        proj = body.get("project")
+        if not isinstance(proj, dict):
+            return {"ok": False}
+        ext = {}
+        for key in ("video", "overlay", "audio"):
+            for it in proj.get(key) or []:
+                s = str((it or {}).get("src", ""))
+                if s.startswith("ext:") and s[4:] in self.ext_files:
+                    ext[s[4:]] = self.ext_files[s[4:]]
+        data = {"v": 1, "name": str(body.get("name", ""))[:120], "project": proj, "ext": ext, "labels": body.get("labels") or {}, "saved": time.time()}
+        try:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            tmp = DATA_DIR / (self.PROJECT_FILE + ".tmp")
+            tmp.write_text(json.dumps(data), encoding="utf-8")
+            os.replace(tmp, DATA_DIR / self.PROJECT_FILE)
+            return {"ok": True}
+        except OSError as e:
+            return {"ok": False, "error": str(e)}
+
+    def load_project(self):
+        f = DATA_DIR / self.PROJECT_FILE
+        try:
+            data = json.loads(f.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return {"ok": False}
+        for fid, path in (data.get("ext") or {}).items():
+            if path and Path(path).exists():
+                self.ext_files[fid] = path
+        return {"ok": True, "project": data.get("project"), "name": data.get("name", ""), "labels": data.get("labels") or {}}
+
+    def clear_project(self):
+        try:
+            (DATA_DIR / self.PROJECT_FILE).unlink()
+        except OSError:
+            pass
+        return {"ok": True}
+
     def register_ext(self, path):
         path = str(path)
         for fid, p in self.ext_files.items():
@@ -812,6 +853,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/editor/sounds":
                 q = parse_qs(urlparse(self.path).query)
                 return self._send(200, APP.search_sounds(q.get("q", [""])[0], q.get("kind", ["sfx"])[0], q.get("page", ["1"])[0]))
+            if path == "/api/editor/project":
+                return self._send(200, APP.load_project())
             if path == "/api/editor/job":
                 return self._send(200, APP.job_state(parse_qs(urlparse(self.path).query).get("id", [""])[0]))
             if path.startswith("/ext/"):
@@ -919,6 +962,10 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": True, "id": APP.register_ext(p), "name": sfx.NAMES[body["name"]]})
                 except ValueError:
                     return self._send(200, {"ok": False, "error": "Unknown sound."})
+            if path == "/api/editor/project/save":
+                return self._send(200, APP.save_project(body))
+            if path == "/api/editor/project/clear":
+                return self._send(200, APP.clear_project())
             if path == "/api/editor/export":
                 return self._send(200, APP.start_export(body))
             if path == "/api/editor/cancel":

@@ -134,7 +134,30 @@ function commit() {
   if (E.hist.length > 80) E.hist.shift();
   E.hi = E.hist.length - 1;
   E.exported = false; E.savedAt = new Date();
+  scheduleSave();
   refreshAll();
+}
+let saveTimer = null;
+function scheduleSave() { clearTimeout(saveTimer); saveTimer = setTimeout(saveNow, 700); }
+function saveNow() {
+  clearTimeout(saveTimer);
+  if (!E.P || !E.P.video.length) return;
+  const labels = {}; for (const k of Object.keys(E.meta)) if (k.startsWith("ext:") && E.meta[k].label) labels[k] = E.meta[k].label;
+  api("/api/editor/project/save", { project: cleanProject(), name: E.name, labels }).catch(() => {});
+}
+addEventListener("pagehide", saveNow);
+async function restoreSaved() {
+  try {
+    const r = await get("/api/editor/project");
+    if (!r.ok || !r.project || !(r.project.video || []).length) return;
+    const P = normalise(r.project);
+    P.tracks = P.tracks || { o: 0, t: 0, e: 0, l: 0, a: 0 };
+    for (const k of Object.keys(r.labels || {})) E.meta[k] = { ...(E.meta[k] || {}), label: r.labels[k] };
+    E.P = P; E.name = r.name || "My edit"; E.t = 0; E.sel = null; E.restored = true; E.exported = false;
+    layout(); E.hist = [JSON.stringify(E.P)]; E.hi = 0;
+    const srcs = new Set([...P.video, ...P.overlay, ...P.audio].map((x) => x.src));
+    await Promise.all([...srcs].map((s) => loadMeta(s).catch(() => {})));
+  } catch (e) { /* nothing saved yet */ }
 }
 function restore(i) {
   E.hi = i; E.P = JSON.parse(E.hist[i]); layout();
@@ -708,7 +731,7 @@ function build() {
   inner.addEventListener("drop", (e) => { if (!E.dnd) return; const t = dropTarget(e); markDrop(null); if (t) { e.preventDefault(); handleDrop(t, E.dnd); } E.dnd = null; });
   addEventListener("dragend", () => { E.dnd = null; markDrop(null); });
 }
-function hide() { pause(); $("ed").classList.remove("on"); closeModal(); toast({ kind: "note", title: "Edit kept", message: "Open Editor in the sidebar to carry on." }); loadClips(); }
+function hide() { saveNow(); pause(); $("ed").classList.remove("on"); closeModal(); toast({ kind: "note", title: "Edit kept", message: "Open Editor in the sidebar to carry on." }); loadClips(); }
 
 /* ------------------------------------------------------------ UI: refresh */
 function refreshAll() { layout(); renderTimeline(); renderInspector(); renderLeft(); syncTransport(); }
@@ -1267,6 +1290,7 @@ function show() {
 async function open(name, range) {
   build();
   if (!name) {
+    if (E.restoring) await E.restoring;
     if (!E.P) { E.P = freshProject(); E.name = "My edit"; E.t = 0; E.hist = [JSON.stringify(E.P)]; E.hi = 0; layout(); }
     return show();
   }
@@ -1274,7 +1298,8 @@ async function open(name, range) {
   try { m = await loadMeta(name); } catch (e) { toast({ kind: "error", message: "Couldn't open that clip in the editor." }); return; }
   const inn = range && range.start > 0.05 ? range.start : 0, out = range && range.end && range.end < m.dur - 0.05 ? range.end : m.dur;
   const clip = newClip(name, inn, out);
-  if (E.P && E.hi > 0 && !E.exported && E.P.video.length) {            // an edit is already in progress
+  if (E.restoring) await E.restoring;
+  if (E.P && (E.hi > 0 || E.restored) && !E.exported && E.P.video.length) {            // an edit is already in progress
     modal(`<h3>You have an edit in progress</h3><p class="ed-hint">Add this clip to it, or start a new edit?</p>
       <div class="ed-foot"><button class="ed-btn" id="o-new">Start a new edit</button><button class="ed-btn primary" id="o-add">Add to this edit</button></div>`);
     $("ed").classList.add("on");
@@ -1287,11 +1312,12 @@ async function open(name, range) {
 function startNew(name, m, clip) {
   E.P = freshProject(); E.P.video.push(clip);
   if (m.h > m.w) E.P.aspect = "9:16";
-  E.name = niceName(name) + " edit"; E.sel = null; E.t = 0; E.playing = false; E.hist = []; E.hi = -1; E.exported = false; E.curI = -1; E.outI = -1; E.busy = false; E.zoomSet = false;
+  E.name = niceName(name) + " edit"; E.sel = null; E.t = 0; E.playing = false; E.hist = []; E.hi = -1; E.exported = false; E.restored = false; E.curI = -1; E.outI = -1; E.busy = false; E.zoomSet = false;
   layout(); E.hist.push(JSON.stringify(E.P)); E.hi = 0; E.tab = "media";
   show();
 }
 function close() { hide(); }
 
+E.restoring = restoreSaved();
 window.Editor = { open, close, hide, state: E, addClip, addOverlay, splitAt, applyTransition, addTimed, addText, show };
 })();

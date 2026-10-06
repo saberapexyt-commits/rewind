@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.3
+
+- **Your edit is saved automatically.** The editor keeps your project (clips, tracks, effects, text, sounds and the name) on your PC after every change, so it's still there after closing Rewind or installing an update. Open **Editor** in the sidebar to carry on.
+
 ## 1.5.2
 
 - **Right click moves the playhead in the editor.** Right click anywhere on the timeline to jump to that spot, or hold and drag to scrub.
