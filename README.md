@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.1.0
+
+- Hotkeys: Clip (with its length next to it), Start / stop long recording, and Bookmark. Set any of them in Settings.
+- Long recordings: record a whole session, drop bookmarks as you go, and see them as flags on the timeline when you watch it back.
+- Share without sending the mp4: copy the file, shrink it to fit Discord (10, 50 or 500 MB), or get a temporary link.
+
 ## 1.0.9
 
 - Vertical clips: open any clip and pick a format (Fill, Fit + blur or Vertical zoom) to see a live 9:16 preview and save a 1080 x 1920 copy. Drag the preview to choose the part of the picture, and trim at the same time.

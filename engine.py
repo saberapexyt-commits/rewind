@@ -13,6 +13,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import json
+import queue
 import threading
 import time
 from collections import deque
@@ -470,6 +472,75 @@ def is_black(stats):
     return stats is not None and stats[1] < 2.5 and stats[0] < 40
 
 
+class LongRecording:
+    """A full-length recording made from the same buffer: each 2 second piece is copied aside as soon as
+    ffmpeg finishes it, and the pieces are joined (no re-encode) when the recording stops."""
+
+    def __init__(self, started_at, log):
+        self.dir = Path(tempfile.mkdtemp(prefix="rewind-long-"))
+        self.t0 = started_at
+        self.log = log
+        self.n = 0
+        self.bookmarks = []
+        self.q = queue.Queue()
+        self.worker = threading.Thread(target=self._run, daemon=True)
+        self.worker.start()
+
+    def _run(self):
+        while True:
+            src = self.q.get()
+            if src is None:
+                return
+            try:
+                if src.exists() and src.stat().st_size > 0:
+                    shutil.copyfile(src, self.dir / f"{self.n:06d}.ts")
+                    self.n += 1
+            except OSError as e:
+                self.log(f"long recording: couldn't keep {src.name}: {e}")
+
+    def piece_done(self, path):
+        self.q.put(path)
+
+    def elapsed(self):
+        return max(0.0, time.monotonic() - self.t0)
+
+    def bookmark(self):
+        t = round(self.elapsed(), 1)
+        self.bookmarks.append(t)
+        return t
+
+    def finish(self, last_piece, final):
+        """Join everything into `final` (an .mp4 path). Returns the bookmark list."""
+        if last_piece:
+            self.q.put(last_piece)
+        self.q.put(None)
+        self.worker.join(60)
+        pieces = sorted(self.dir.glob("*.ts"))
+        try:
+            if not pieces:
+                raise RuntimeError("Nothing was recorded.")
+            lst = self.dir / "list.txt"
+            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in pieces), encoding="utf-8")
+            part = final.with_name(final.stem + ".part")
+            final.parent.mkdir(parents=True, exist_ok=True)
+            r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
+                     "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=7200)
+            if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
+                raise RuntimeError("Couldn't join the recording: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
+            os.replace(part, final)
+        finally:
+            shutil.rmtree(self.dir, ignore_errors=True)
+        return self.bookmarks
+
+    def discard(self):
+        self.q.put(None)
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def bookmarks_path(video):
+    return video.parent / ".thumbs" / (video.stem + ".bookmarks.json")
+
+
 class Recorder:
     def __init__(self, settings, log=print, title_fn=lambda: "Desktop", game_fn=lambda: None,
                  remember_window_game=lambda exe: None):
@@ -497,6 +568,8 @@ class Recorder:
         self.wanted = False
         self.fails = 0
         self.has_audio = False
+        self.long = None
+        self.long_end_cb = None  # called when the buffer stops under a running long recording
         threading.Thread(target=self._watchdog, daemon=True).start()
         threading.Thread(target=self._health, daemon=True).start()
 
@@ -602,8 +675,11 @@ class Recorder:
             line = raw.decode("utf-8", "replace").rstrip()
             m = pat.search(line)
             if m:
+                prev = self.order[-1][0] if self.order else None
                 self.order.append((Path(m.group(1)).name, time.monotonic()))
                 self.fails = 0
+                if self.long and prev:
+                    self.long.piece_done(self.buf / prev)
             elif line:
                 self.stderr_tail.append(line)
 
@@ -627,7 +703,39 @@ class Recorder:
                     pass
             self.proc = None
 
+    # ---- long recording
+    def start_long(self):
+        with self.lock:
+            if self.long:
+                return False
+            if self.state != "buffering" or not self.order:
+                raise RuntimeError("Rewind isn't recording yet. Wait a moment and try again.")
+            self.long = LongRecording(self.order[-1][1], self.log)
+            self.log("long recording started")
+            return True
+
+    def stop_long(self, folder, title):
+        """Finish the long recording and return (path, bookmarks)."""
+        with self.lock:
+            lr, self.long = self.long, None
+            last = self.buf / self.order[-1][0] if self.order else None
+        if not lr:
+            raise RuntimeError("No long recording is running.")
+        folder = Path(folder)
+        stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
+        final = folder / f"{safe_name(title)} recording {stamp}.mp4"
+        marks = lr.finish(last, final)
+        if marks:
+            b = bookmarks_path(final)
+            b.parent.mkdir(exist_ok=True)
+            b.write_text(json.dumps(marks), encoding="utf-8")
+        threading.Thread(target=make_thumb, args=(final,), daemon=True).start()
+        self.log(f"long recording saved {final}")
+        return final, marks
+
     def stop(self, paused=True, waiting=False):
+        if self.long and self.long_end_cb:
+            threading.Thread(target=self.long_end_cb, daemon=True).start()
         with self.lock:
             self.wanted = False
             self._kill()
@@ -723,6 +831,8 @@ class Recorder:
             "window_capture": window_capture_supported(),
             "notice": self.notice,
             "check": self.last_check,
+            "long": {"active": bool(self.long), "elapsed": round(self.long.elapsed()) if self.long else 0,
+                     "bookmarks": len(self.long.bookmarks) if self.long else 0},
         }
 
     # ---- save

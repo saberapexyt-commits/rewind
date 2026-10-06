@@ -1,3 +1,5 @@
-- Vertical clips: open any clip and pick a format (Fill, Fit + blur or Vertical zoom) to see a live 9:16 preview and save a 1080 x 1920 copy. Drag the preview to choose the part of the picture, and trim at the same time.
+- Hotkeys: Clip (with its length next to it), Start / stop long recording, and Bookmark. Set any of them in Settings.
+- Long recordings: record a whole session, drop bookmarks as you go, and see them as flags on the timeline when you watch it back.
+- Share without sending the mp4: copy the file, shrink it to fit Discord (10, 50 or 500 MB), or get a temporary link.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.

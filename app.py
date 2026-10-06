@@ -19,9 +19,10 @@ from urllib.parse import unquote, urlparse
 
 import engine
 import games
+import share
 import winbits
 
-VERSION = "1.0.9"
+VERSION = "1.1.0"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -51,11 +52,14 @@ DEFAULTS = {
     "length": 30, "fps": 60, "quality": "balanced", "encoder": "auto", "monitor": 0,
     "desktop_audio": True, "mic": True, "mic_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
+    "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
+    "hotkey_bookmark": None, "share_ok": False,
     "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
     "close_to_tray": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
+HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
 RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture"}
 
 
@@ -90,7 +94,10 @@ class App:
         self.watcher = games.GameWatcher(lambda: self.settings.get("ignored_games", []), self.on_game_change, log)
         self.rec = engine.Recorder(self.settings, log=log, title_fn=winbits.foreground_title,
                                    game_fn=self.current_game, remember_window_game=self.remember_window_game)
-        self.hotkey = winbits.Hotkey(self.save_replay)
+        self.hotkeys = {"clip": winbits.Hotkey(self.save_replay), "record": winbits.Hotkey(self.toggle_long),
+                        "bookmark": winbits.Hotkey(self.add_bookmark)}
+        self.hotkey = self.hotkeys["clip"]
+        self.rec.long_end_cb = self.stop_long
         self.window = None
         self.tray = None
         self.events = []  # toasts for the UI: saved / failed
@@ -241,9 +248,7 @@ class App:
     def save_replay(self):
         try:
             game = self.current_game()
-            folder = Path(self.settings["clips_dir"])
-            if game and self.settings.get("game_folders", True):
-                folder = folder / engine.safe_name(game["name"])
+            folder = self.target_folder(game)
             if self.rec.state == "buffering" and self.rec.order:
                 winbits.play_saved_sound(self.settings.get("sound_name", "clip"), self.settings.get("sound_volume", "medium"))
             p = self.rec.save(folder, title=game["name"] if game else None)
@@ -259,6 +264,8 @@ class App:
 
     def toggle(self):
         if self.rec.wanted:
+            if self.rec.long:
+                self.stop_long()
             self.rec.stop()
         elif self.rec.state == "waiting":
             self.rec.start()  # "Record now" while waiting for a game
@@ -273,9 +280,9 @@ class App:
         restart = any(k in RESTART_KEYS and patch[k] != self.settings.get(k) for k in patch)
         self.settings.update(patch)
         save_settings(self.settings)
-        if "hotkey" in patch:
-            h = self.settings["hotkey"]
-            self.hotkey.set(h["mods"], h["vk"])
+        for w, k in HOTKEY_KEYS.items():
+            if k in patch:
+                self.apply_hotkey(w)
         if "game_only" in patch:
             if patch["game_only"] and not self.current_game() and self.rec.state != "paused":
                 self.rec.stop(waiting=True)
@@ -285,6 +292,67 @@ class App:
             self.watcher.tick()
         if restart:
             threading.Thread(target=self.rec.restart, daemon=True).start()
+
+    def apply_hotkey(self, which, retries=0):
+        hk, h = self.hotkeys[which], self.settings.get(HOTKEY_KEYS[which])
+        if h:
+            hk.set(h["mods"], h["vk"], retries)
+        else:
+            hk.clear()
+            hk.ok, hk.error = True, ""
+
+    def target_folder(self, game):
+        folder = Path(self.settings["clips_dir"])
+        if game and self.settings.get("game_folders", True):
+            folder = folder / engine.safe_name(game["name"])
+        return folder
+
+    def note(self, title, message=""):
+        self.events.append({"id": time.time(), "kind": "note", "title": title, "message": message})
+
+    def play(self, name):
+        winbits.play_saved_sound(name, self.settings.get("sound_volume", "medium"))
+
+    # ---- long recording + bookmarks
+    def toggle_long(self):
+        if self.rec.long:
+            return self.stop_long()
+        try:
+            self.rec.start_long()
+        except Exception as e:
+            self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
+            return {"ok": False, "error": str(e)}
+        if self.settings.get("sound_name") != "off":
+            self.play("ping")
+        self.note("Recording started", "Press the same key again to stop. Add bookmarks with your bookmark key.")
+        return {"ok": True}
+
+    def stop_long(self):
+        if not self.rec.long:
+            return {"ok": False}
+        game = self.current_game()
+        try:
+            self.note("Saving your recording…", "Long recordings take a moment to finish.")
+            p, marks = self.rec.stop_long(self.target_folder(game), game["name"] if game else (winbits.foreground_title() or "Desktop"))
+            if self.settings.get("sound_name") != "off":
+                self.play(self.settings.get("sound_name", "clip"))
+            rel = p.relative_to(Path(self.settings["clips_dir"])).as_posix()
+            self.events.append({"id": time.time(), "kind": "saved", "name": rel, "long": True, "bookmarks": len(marks)})
+            return {"ok": True, "name": rel}
+        except Exception as e:
+            log("long recording failed: " + traceback.format_exc())
+            self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
+            return {"ok": False, "error": str(e)}
+
+    def add_bookmark(self):
+        if not self.rec.long:
+            self.note("No long recording yet", "Start one first, then bookmark the moments you want to find later.")
+            return {"ok": False}
+        t = int(self.rec.long.bookmark())
+        if self.settings.get("sound_name") != "off":
+            self.play("ping")
+        self.note("Bookmark added", f"At {t // 60}:{t % 60:02d} in your recording.")
+        return {"ok": True}
 
     def state(self):
         h = self.settings["hotkey"]
@@ -296,6 +364,8 @@ class App:
             "status": self.rec.status(),
             "settings": self.settings,
             "hotkey_ok": self.hotkey.ok, "hotkey_error": self.hotkey.error, "hotkey_label": h["label"],
+            "hotkeys": {w: {"label": (self.settings.get(k) or {}).get("label", ""), "ok": self.hotkeys[w].ok,
+                            "error": self.hotkeys[w].error} for w, k in HOTKEY_KEYS.items()},
             "monitors": self.monitors, "mics": self.mics,
             "events": self.events[-5:],
             "clip_count": len(self.clip_files()),
@@ -318,6 +388,16 @@ class App:
                 self._durations[key] = 0
         return self._durations[key]
 
+    @staticmethod
+    def clip_bookmarks(p):
+        b = engine.bookmarks_path(p)
+        if not b.exists():
+            return []
+        try:
+            return json.loads(b.read_text(encoding="utf-8"))
+        except Exception:
+            return []
+
     def clips(self):
         d = Path(self.settings["clips_dir"])
         out = []
@@ -326,7 +406,7 @@ class App:
             out.append({"name": p.relative_to(d).as_posix(), "title": p.stem,
                         "game": p.parent.name if p.parent != d else "",
                         "size_mb": round(st.st_size / 1e6, 1), "mtime": st.st_mtime,
-                        "duration": self.clip_duration(p, st)})
+                        "duration": self.clip_duration(p, st), "bookmarks": self.clip_bookmarks(p)})
         return out
 
     @staticmethod
@@ -446,8 +526,12 @@ class App:
 
     def quit(self):
         log("quit")
+        if self.rec.long:
+            self.rec.long_end_cb = None
+            self.stop_long()
         self.rec.stop(paused=False)
-        self.hotkey.clear()
+        for hk in self.hotkeys.values():
+            hk.clear()
         if self.tray:
             try:
                 self.tray.stop()
@@ -480,6 +564,8 @@ class App:
         menu = pystray.Menu(
             M("Open Rewind", lambda: self.show(), default=True),
             M("Save replay", lambda: threading.Thread(target=self.save_replay, daemon=True).start()),
+            M(lambda item: "Stop long recording" if self.rec.long else "Start long recording",
+              lambda: threading.Thread(target=self.toggle_long, daemon=True).start()),
             M(lambda item: "Pause buffer" if self.rec.wanted else "Resume buffer", lambda: self.toggle()),
             pystray.Menu.SEPARATOR,
             M("Quit Rewind", lambda: self.quit()),
@@ -603,14 +689,49 @@ class Handler(BaseHTTPRequestHandler):
                 APP.update_settings(body)
                 return self._send(200, {"ok": True})
             if path == "/api/hotkey":
-                old = dict(APP.settings["hotkey"])
-                APP.update_settings({"hotkey": body})
-                if not APP.hotkey.ok:  # taken: keep the old one working
-                    err = APP.hotkey.error
-                    APP.update_settings({"hotkey": old})
-                    APP.hotkey.error = err
+                w = body.pop("which", "clip")
+                key = HOTKEY_KEYS[w]
+                if body.get("clear"):
+                    if w == "clip":
+                        return self._send(200, {"ok": False, "error": "The clip shortcut can't be empty."})
+                    APP.update_settings({key: None})
+                    return self._send(200, {"ok": True})
+                old = APP.settings.get(key)
+                APP.update_settings({key: {"mods": body["mods"], "vk": body["vk"], "label": body["label"]}})
+                if not APP.hotkeys[w].ok:  # taken: keep the old one working
+                    err = APP.hotkeys[w].error
+                    APP.update_settings({key: old})
+                    APP.hotkeys[w].error = err
                     return self._send(200, {"ok": False, "error": err})
                 return self._send(200, {"ok": True})
+            if path == "/api/long/toggle":
+                threading.Thread(target=APP.toggle_long, daemon=True).start()
+                return self._send(200, {"ok": True})
+            if path == "/api/bookmark":
+                return self._send(200, APP.add_bookmark())
+            if path == "/api/share/copy":
+                return self._send(200, {"ok": share.copy_file_to_clipboard(APP.clip_path(body["name"]))})
+            if path == "/api/share/discord":
+                try:
+                    dest = share.make_discord_copy(APP.clip_path(body["name"]), int(body.get("mb", 10)))
+                    copied = share.copy_file_to_clipboard(dest)
+                    return self._send(200, {"ok": True, "copied": copied, "size_mb": round(dest.stat().st_size / 1e6, 1),
+                                            "name": dest.relative_to(Path(APP.settings["clips_dir"]).resolve()).as_posix()})
+                except Exception as e:
+                    return self._send(200, {"ok": False, "error": str(e)})
+            if path == "/api/share/consent":
+                APP.update_settings({"share_ok": True})
+                return self._send(200, {"ok": True})
+            if path == "/api/share/link":
+                if not APP.settings.get("share_ok"):
+                    return self._send(200, {"ok": False, "need_consent": True})
+                try:
+                    url = share.upload_for_link(APP.clip_path(body["name"]), body.get("hours", "72h"))
+                    share.copy_text_to_clipboard(url)
+                    return self._send(200, {"ok": True, "url": url})
+                except Exception as e:
+                    log(f"upload failed: {e}")
+                    return self._send(200, {"ok": False, "error": str(e)})
             if path == "/api/pick-folder":
                 r = APP.pick_folder()
                 if r:
@@ -625,9 +746,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/clips/delete":
                 p = APP.clip_path(body["name"])
                 winbits.to_recycle_bin(p)
-                t = engine.thumb_path(p)
-                if t.exists():
-                    t.unlink()
+                for t in (engine.thumb_path(p), engine.bookmarks_path(p)):
+                    if t.exists():
+                        t.unlink()
                 return self._send(200, {"ok": True})
             if path == "/api/clips/trim":
                 return self._send(200, APP.trim_clip(body))
@@ -640,6 +761,9 @@ class Handler(BaseHTTPRequestHandler):
                 t = engine.thumb_path(p)
                 if t.exists():
                     t.rename(engine.thumb_path(q))
+                bm = engine.bookmarks_path(p)
+                if bm.exists():
+                    bm.rename(engine.bookmarks_path(q))
                 return self._send(200, {"ok": True, "name": q.relative_to(Path(APP.settings["clips_dir"]).resolve()).as_posix()})
             if path == "/api/open-url":
                 url = body.get("url", "")
@@ -718,7 +842,8 @@ def main():
     log(f"Rewind {VERSION} starting")
     start_server()
     h = APP.settings["hotkey"]
-    APP.hotkey.set(h["mods"], h["vk"], retries=20)
+    for w in HOTKEY_KEYS:
+        APP.apply_hotkey(w, retries=20)
     APP.watcher.tick()
     APP.watcher.start()
     def begin_buffer():

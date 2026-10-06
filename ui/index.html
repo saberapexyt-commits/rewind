@@ -431,6 +431,37 @@
   .zoomctl { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); } .zoomctl input { width: 130px; accent-color: #fff; } .zoomctl b { color: var(--text); min-width: 34px; }
   .fnote { color: var(--dim); font-size: 12.5px; }
   @media (max-width: 860px) { .vpanel { width: 160px; } }
+
+  /* ===== hotkeys ===== */
+  .hkrow .lbl { display: flex; align-items: center; gap: 14px; }
+  .hkic { width: 30px; height: 30px; border-radius: 8px; display: grid; place-items: center; flex-shrink: 0; background: #1b1b1f; }
+  .hkic svg { width: 18px; height: 18px; } .hkic.hkclip { color: #c8f24a; } .hkic.rec { color: #3ddc84; } .hkic.bm { color: #a78bfa; }
+  .hkctl { display: flex; align-items: center; gap: 10px; }
+  .hkkey { min-width: 230px; height: 42px; padding: 0 14px; border-radius: 10px; border: 1px solid transparent; background: #050506; color: #fff; font-weight: 700; font-size: 13px; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+  .hkkey:hover { border-color: #34343c; } .hkkey.listening { border-color: var(--accent); color: var(--accent); }
+  .hkkey svg { width: 16px; height: 16px; } .hkkey .keys { gap: 4px; } .hkkey kbd { background: #1d1d22; border: 0; padding: 1px 8px; }
+  .hkctl select { height: 42px; min-width: 150px; border-radius: 10px; background: #050506; border: 1px solid transparent; }
+  .hkx { font-size: 20px; line-height: 1; }
+  @media (max-width: 1000px) { .hkkey { min-width: 140px; } }
+
+  /* ===== long recording on Home ===== */
+  #recbtn.recording { background: #3a1a20; color: #ff7b8c; }
+  #recbtn.recording::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #ff4d6d; animation: rec 1.6s infinite; }
+  #recbtn:not(.recording)::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: #ff4d6d; }
+
+  /* ===== bookmarks in the player ===== */
+  .bmflag { position: absolute; top: 2px; width: 18px; height: 22px; margin-left: -9px; color: #a78bfa; cursor: pointer; display: grid; place-items: center; }
+  .bmflag svg { width: 15px; height: 15px; } .bmflag:hover { color: #fff; }
+
+  /* ===== share menu ===== */
+  .sharewrap { position: relative; }
+  .sharemenu { position: absolute; right: 0; top: 46px; width: 360px; z-index: 30; background: #17171b; border: 1px solid #2c2c33; border-radius: 14px; padding: 6px 16px 14px; box-shadow: 0 18px 50px rgba(0,0,0,.6); }
+  .shr { padding: 12px 0; border-bottom: 1px solid #25252b; } .shr:last-of-type { border-bottom: 0; }
+  .shr b { display: block; font-size: 14px; } .shr small { display: block; color: var(--muted); font-size: 12.5px; margin: 2px 0 9px; }
+  .linkrow { display: flex; gap: 8px; align-items: center; margin-top: 4px; } .linkrow select { flex: 1; height: 34px; min-width: 0; }
+  .linkrow input { flex: 1; min-width: 0; height: 34px; border-radius: 8px; border: 1px solid var(--line-2); background: #0e0e11; padding: 0 10px; }
+  .consent { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #1f1c10; border: 1px solid #4a4220; font-size: 12.5px; } .consent p { margin: 0 0 8px; color: #e9dfae; }
+  .shstat { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); min-height: 16px; } .shstat.bad { color: #ff7b8c; }
 </style>
 </head>
 <body class="paused">
@@ -484,6 +515,8 @@
       </button>
       <button class="btn" id="micbtn" title="Turn your microphone on or off in clips">Mic</button>
       <button class="btn" id="togglebtn">Pause buffer</button>
+      <button class="btn" id="recbtn" title="Record everything until you stop it">Start recording</button>
+      <button class="btn" id="bmbtn" hidden>Bookmark</button>
       <span class="chip" id="gamechip"><i></i><span id="gametext">Looking for a game…</span></span>
       <span class="statline" id="statline"></span>
       <span class="count" id="clipcount"></span>
@@ -506,16 +539,29 @@
 
   <!-- SETTINGS -->
   <section class="page" id="page-settings">
+    <div class="card" id="hotkeycard">
+      <div class="sect">Hotkeys</div>
+      <p class="sect-note">They work while a game is in focus. Use any key, on its own or with Ctrl, Alt or Shift.</p>
+      <div class="set hkrow">
+        <div class="lbl"><span class="hkic hkclip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><path d="M20 4L8.1 15.9M14.5 14.5L20 20M8.1 8.1L12 12"/></svg></span><div><b>Clip</b><small id="hkn-clip">Save the previous moment of gameplay</small></div></div>
+        <div class="hkctl"><button class="hkkey" id="hkb-clip"></button><select id="hk-length" aria-label="Clip length"></select></div>
+      </div>
+      <div class="set hkrow">
+        <div class="lbl"><span class="hkic rec"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h4M3 14h4M17 10h4M17 14h4"/></svg></span><div><b>Start / stop long recording</b><small id="hkn-record">Start or stop a full recording of your gameplay</small></div></div>
+        <div class="hkctl"><button class="hkkey" id="hkb-record"></button><button class="ico hkx" data-clear="record" title="Remove this hotkey" aria-label="Remove this hotkey">&times;</button></div>
+      </div>
+      <div class="set hkrow">
+        <div class="lbl"><span class="hkic bm"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12v18l-6-4-6 4z"/></svg></span><div><b>Bookmark</b><small id="hkn-bookmark">Add a bookmark to your current long recording</small></div></div>
+        <div class="hkctl"><button class="hkkey" id="hkb-bookmark"></button><button class="ico hkx" data-clear="bookmark" title="Remove this hotkey" aria-label="Remove this hotkey">&times;</button></div>
+      </div>
+    </div>
+
     <div class="card">
       <div class="sect">Replay</div>
       <p class="sect-note">How much Rewind keeps, and how you save it.</p>
       <div class="set">
         <div class="lbl"><b>Replay length</b><small>Longer replays use more disk space while buffering.</small></div>
         <div class="seg" id="seg-length"></div>
-      </div>
-      <div class="set">
-        <div class="lbl"><b>Save shortcut</b><small id="hk-note">Works while a game is in focus.</small></div>
-        <div class="hk" id="hk"><span class="keys" id="keys-set"></span><button class="btn" id="hkbtn">Change</button></div>
       </div>
       <div class="set">
         <div class="lbl"><b>Sound when saved</b><small>So you know it worked without leaving the game.</small></div>
@@ -637,10 +683,32 @@
 
 <div class="modal" id="modal" role="dialog" aria-modal="true" aria-label="Replay player">
   <button class="navarrow" id="prevclip" aria-label="Previous clip"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 5l-7 7 7 7"/></svg></button>
-  <div class="viewer">
+  <div class="viewer" id="viewer">
     <div class="vhead">
       <input type="text" id="cliptitle" aria-label="Clip name" spellcheck="false">
       <span class="vmeta" id="vmeta"></span>
+      <div class="sharewrap">
+        <button class="btn" id="sharebtn" aria-haspopup="true">Share</button>
+        <div class="sharemenu" id="sharemenu" hidden>
+          <div class="shr"><b>Copy the file</b><small>Then paste it into Discord or anywhere that takes attachments.</small>
+            <button class="btn" id="sh-copy">Copy file</button></div>
+          <div class="shr"><b>Shrink for Discord</b><small>Makes a smaller copy under the upload limit and copies it for you.</small>
+            <div class="seg" id="sh-size"><button data-mb="10">10 MB</button><button data-mb="50">50 MB</button><button data-mb="500">500 MB</button></div></div>
+          <div class="shr"><b>Get a link instead</b><small>Uploads a temporary copy and gives you a link, so there's no file to send.</small>
+            <div class="linkrow">
+              <select id="sh-hours" aria-label="How long the link works"><option value="1h">1 hour</option><option value="12h">12 hours</option><option value="24h">1 day</option><option value="72h" selected>3 days</option></select>
+              <button class="btn primary" id="sh-link">Create link</button>
+            </div>
+            <div class="consent" id="sh-consent" hidden>
+              <p>This uploads your clip to <b>litterbox.catbox.moe</b>, a free temporary file host. Anyone who has the link can watch it until it expires. Continue?</p>
+              <div class="linkrow"><button class="btn primary" id="sh-yes">Upload</button><button class="btn" id="sh-no">Cancel</button></div>
+            </div>
+            <div class="linkrow" id="sh-out" hidden><input id="sh-url" readonly aria-label="Link"><button class="btn" id="sh-urlcopy">Copy</button></div>
+          </div>
+          <p class="shstat" id="sh-stat"></p>
+        </div>
+      </div>
+
       <button class="btn" id="reveal">Show in folder</button>
       <button class="btn danger" id="delete">Delete</button>
       <button class="btn" id="closeplayer" aria-label="Close player">Close</button>
@@ -791,6 +859,12 @@ function render() {
   const rec = state === "buffering" || state === "saving";
   $("pill").querySelector("span").textContent = state === "buffering" ? (g && g.focused ? `Recording ${g.name}` : "Recording")
     : { saving: "Saving replay…", error: "Recording stopped", paused: "Paused", starting: "Starting…", waiting: "Waiting for game", stopped: "Paused" }[state] || state;
+  const lg = st.long || { active: false };
+  $("recbtn").textContent = lg.active ? `Stop \u00b7 ${clock(lg.elapsed)}` : "Start recording";
+  $("recbtn").classList.toggle("recording", !!lg.active);
+  $("recbtn").disabled = !lg.active && state !== "buffering";
+  $("bmbtn").hidden = !lg.active; $("bmbtn").textContent = `Bookmark${lg.bookmarks ? " (" + lg.bookmarks + ")" : ""}`;
+  if (lg.active && state === "buffering") $("pill").querySelector("span").textContent = `Long recording ${clock(lg.elapsed)}`;
   $("topkey").innerHTML = `${keycaps(S.hotkey_label)}<span>Clip ${st.length >= 60 ? st.length / 60 + "m" : st.length + "s"}</span>`;
   $("err").textContent = st.error || "";
   $("savebtn").disabled = !(state === "buffering" && st.buffered > 0);
@@ -815,7 +889,7 @@ function render() {
   if (firstState) { firstState = false; loadClips(); }
   const libKey = S.clip_count + "|" + (st.last_saved || "");
   if (libKey !== lastLibKey) { if (lastLibKey !== null) loadClips(); lastLibKey = libKey; }
-  const key = JSON.stringify([s, st.available, st.encoder, S.monitors, S.mics, S.hotkey_ok, S.hotkey_error, S.hotkey_label,
+  const key = JSON.stringify([s, S.hotkeys, st.available, st.encoder, S.monitors, S.mics, S.hotkey_ok, S.hotkey_error, S.hotkey_label,
     st.window_capture, g && [g.name, g.focused, g.reason], S.recent_games.map((r) => r.exe)]);
   if (key !== settingsKey) { settingsKey = key; renderSettings(); }
 }
@@ -825,6 +899,8 @@ $("savebtn").addEventListener("click", async () => {
   $("savebtn").disabled = true;
   await api("/api/save");
 });
+$("recbtn").addEventListener("click", () => api("/api/long/toggle"));
+$("bmbtn").addEventListener("click", () => api("/api/bookmark"));
 $("micbtn").addEventListener("click", () => set({ mic: !S.settings.mic }));
 $("togglebtn").addEventListener("click", () => api("/api/toggle"));
 $("sitebtn").addEventListener("click", () => api("/api/open-url", { url: S.website }));
@@ -834,8 +910,10 @@ for (const id of ["openfolder", "openfolder3"]) $(id).addEventListener("click", 
 function toast(ev) {
   const t = document.createElement("div");
   t.className = "toast" + (ev.kind === "error" ? " error" : "");
-  if (ev.kind === "saved") {
-    t.innerHTML = `<b>Replay saved</b><small>${esc(ev.name.split("/").pop().replace(/\.mp4$/, ""))}</small>
+  if (ev.kind === "note") {
+    t.innerHTML = `<b>${esc(ev.title)}</b><small>${esc(ev.message || "")}</small>`;
+  } else if (ev.kind === "saved") {
+    t.innerHTML = `<b>${ev.long ? "Recording saved" : "Replay saved"}</b><small>${esc(ev.name.split("/").pop().replace(/\.mp4$/, ""))}</small>
       <div class="acts"><button class="btn primary" data-a="play">Watch</button><button class="btn" data-a="show">Show in folder</button></div>`;
     t.querySelector('[data-a="play"]').onclick = () => { openPlayer(ev.name); t.remove(); };
     t.querySelector('[data-a="show"]').onclick = () => api("/api/clips/reveal", { name: ev.name });
@@ -1016,7 +1094,10 @@ function buildRuler() {
   for (let t = 0; t <= V.dur + 0.001; t += step) h += `<span style="left:${xOf(t)}px">${clock(t)}</span>`;
   const sub = step / 5;
   for (let t = 0; t <= V.dur; t += sub) h += `<i class="${Math.abs(t / step - Math.round(t / step)) < 1e-6 ? "big" : ""}" style="left:${xOf(t)}px"></i>`;
+  const c = clips.find((x) => x.name === current);
+  for (const t of (c && c.bookmarks) || []) if (t <= V.dur) h += `<b class="bmflag" data-t="${t}" style="left:${xOf(t)}px" title="Bookmark at ${clock(t)}"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 3h12v18l-6-4-6 4z"/></svg></b>`;
   $("ruler").innerHTML = h;
+  $("ruler").querySelectorAll(".bmflag").forEach((f) => f.onclick = () => { vid.currentTime = Number(f.dataset.t); });
 }
 function clearStrip() { const c = $("filmstrip"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
 async function buildFilmstrip(url) {
@@ -1187,6 +1268,42 @@ pc.addEventListener("pointermove", (e) => {
 });
 pc.addEventListener("pointerup", () => { pdrag = null; });
 
+/* sharing */
+function shStat(msg, bad) { $("sh-stat").textContent = msg || ""; $("sh-stat").classList.toggle("bad", !!bad); }
+function closeShare() { $("sharemenu").hidden = true; $("sh-consent").hidden = true; }
+$("sharebtn").onclick = (e) => { e.stopPropagation(); $("sharemenu").hidden = !$("sharemenu").hidden; $("sh-out").hidden = true; shStat(""); };
+$("sharemenu").addEventListener("click", (e) => e.stopPropagation());
+$("viewer").addEventListener("click", () => { if (!$("sharemenu").hidden) closeShare(); });
+$("sh-copy").onclick = async () => {
+  const r = await api("/api/share/copy", { name: current });
+  shStat(r.ok ? "Copied. Paste it with Ctrl+V." : "Couldn't copy the file.", !r.ok);
+};
+document.querySelectorAll("#sh-size button").forEach((b) => b.onclick = async () => {
+  const btns = document.querySelectorAll("#sh-size button");
+  btns.forEach((x) => x.disabled = true);
+  shStat(`Shrinking to ${b.dataset.mb} MB…`);
+  try {
+    const r = await api("/api/share/discord", { name: current, mb: Number(b.dataset.mb) });
+    if (r.ok) { shStat(`Done: ${r.size_mb} MB.${r.copied ? " It's copied, paste it with Ctrl+V." : ""}`); await loadClips(); }
+    else shStat(r.error, true);
+  } catch (e) { shStat("Rewind didn't respond.", true); }
+  btns.forEach((x) => x.disabled = false);
+});
+async function makeLink() {
+  $("sh-consent").hidden = true; $("sh-link").disabled = true; shStat("Uploading…");
+  try {
+    const r = await api("/api/share/link", { name: current, hours: $("sh-hours").value });
+    if (r.need_consent) { $("sh-consent").hidden = false; shStat(""); }
+    else if (r.ok) { $("sh-url").value = r.url; $("sh-out").hidden = false; shStat("Link copied. It's ready to paste."); }
+    else shStat(r.error || "The upload failed.", true);
+  } catch (e) { shStat("Rewind didn't respond.", true); }
+  $("sh-link").disabled = false;
+}
+$("sh-link").onclick = makeLink;
+$("sh-yes").onclick = async () => { await api("/api/share/consent"); makeLink(); };
+$("sh-no").onclick = () => { $("sh-consent").hidden = true; };
+$("sh-urlcopy").onclick = () => { $("sh-url").select(); try { navigator.clipboard.writeText($("sh-url").value); } catch (e) { document.execCommand("copy"); } shStat("Link copied."); };
+
 /* header actions */
 $("closeplayer").onclick = closePlayer;
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closePlayer(); });
@@ -1347,10 +1464,7 @@ function renderSettings() {
   md.onchange = () => set({ mic_device: md.value || null });
 
   $("clipsdir").textContent = s.clips_dir; $("clipsdir").title = s.clips_dir;
-  if (!listening) {
-    $("keys-set").innerHTML = keycaps(S.hotkey_label);
-    $("hk-note").innerHTML = S.hotkey_ok ? "Works while a game is in focus." : `<span class="warn">${esc(S.hotkey_error)}</span>`;
-  }
+  renderHotkeys();
 }
 function nameFor(exe) {
   const r = (S.recent_games || []).find((x) => x.exe.toLowerCase() === exe.toLowerCase());
@@ -1360,8 +1474,9 @@ async function poll1() { S = await get("/api/state"); render(); }
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
 $("pickfolder").onclick = () => api("/api/pick-folder").then(() => loadClips());
 
-/* ---------- shortcut recorder */
-let listening = false;
+/* ---------- hotkeys: clip, long recording, bookmark */
+let listening = false;                          // which one is waiting for a key: "clip" | "record" | "bookmark" | false
+const HK_NOTE = { clip: "Save the previous moment of gameplay", record: "Start or stop a full recording of your gameplay", bookmark: "Add a bookmark to your current long recording" };
 const VK = { Space: 0x20, PageUp: 0x21, PageDown: 0x22, End: 0x23, Home: 0x24, Insert: 0x2d, Delete: 0x2e,
   Pause: 0x13, ScrollLock: 0x91, Backquote: 0xc0, Minus: 0xbd, Equal: 0xbb, BracketLeft: 0xdb, BracketRight: 0xdd,
   Semicolon: 0xba, Quote: 0xde, Comma: 0xbc, Period: 0xbe, Slash: 0xbf, Backslash: 0xdc };
@@ -1374,20 +1489,30 @@ function vkOf(e) {
   if (VK[e.code]) return [VK[e.code], e.code.replace(/^(Page)(Up|Down)$/, "Page $2").replace("Backquote", "`")];
   return null;
 }
-$("hkbtn").onclick = () => {
-  if (listening) return stopListening();
-  listening = true;
-  $("hk").classList.add("listening");
-  $("keys-set").innerHTML = "<kbd>Press keys…</kbd>";
-  $("hkbtn").textContent = "Cancel";
-  $("hk-note").textContent = "Press the key you want, on its own or with Ctrl, Alt or Shift. Esc cancels.";
-};
-function stopListening() {
-  listening = false;
-  $("hk").classList.remove("listening");
-  $("hkbtn").textContent = "Change";
-  renderSettings();
+const PENCIL = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+function renderHotkeys() {
+  if (!S || !S.hotkeys) return;
+  for (const w of ["clip", "record", "bookmark"]) {
+    const h = S.hotkeys[w], b = $("hkb-" + w);
+    b.classList.toggle("listening", listening === w);
+    b.innerHTML = listening === w ? "Press a key…" : h.label ? keycaps(h.label) : PENCIL;
+    $("hkn-" + w).innerHTML = listening === w ? "Press the key you want. Esc cancels."
+      : h.error ? `<span class="warn">${esc(h.error)}</span>` : HK_NOTE[w];
+  }
+  document.querySelectorAll("[data-clear]").forEach((x) => x.style.visibility = S.hotkeys[x.dataset.clear].label ? "visible" : "hidden");
+  const len = $("hk-length");
+  if (len.dataset.v !== String(S.settings.length)) {
+    len.innerHTML = [[15, "15 seconds"], [30, "30 seconds"], [60, "1 minute"], [120, "2 minutes"], [300, "5 minutes"]]
+      .map(([v, l]) => `<option value="${v}" ${v == S.settings.length ? "selected" : ""}>${l}</option>`).join("");
+    len.dataset.v = String(S.settings.length);
+  }
 }
+$("hk-length").onchange = (e) => { e.target.dataset.v = e.target.value; set({ length: Number(e.target.value) }); };
+for (const w of ["clip", "record", "bookmark"]) {
+  $("hkb-" + w).onclick = () => { listening = listening === w ? false : w; renderHotkeys(); };
+}
+document.querySelectorAll("[data-clear]").forEach((x) => x.onclick = async () => { await api("/api/hotkey", { which: x.dataset.clear, clear: true }); await poll1(); });
+function stopListening() { listening = false; renderHotkeys(); }
 document.addEventListener("keydown", async (e) => {
   if (!listening) return;
   e.preventDefault();
@@ -1397,11 +1522,12 @@ document.addEventListener("keydown", async (e) => {
   const mods = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0);
   const plain = !mods && !/^F\d+$/.test(k[1]);
   const label = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", k[1]].filter(Boolean).join(" + ");
+  const which = listening;
   listening = false;
-  const r = await api("/api/hotkey", { mods, vk: k[0], label });
-  stopListening();
-  if (!r.ok) $("hk-note").innerHTML = `<span class="warn">${esc(r.error)}</span>`;
-  else if (plain) $("hk-note").innerHTML = `<span class="warn">${esc(k[1])} now saves a replay everywhere, so it won't type while Rewind runs.</span>`;
+  const r = await api("/api/hotkey", { which, mods, vk: k[0], label });
+  await poll1();
+  if (!r.ok) { S.hotkeys[which].error = r.error; renderHotkeys(); }
+  else if (plain) { $("hkn-" + which).innerHTML = `<span class="warn">${esc(k[1])} now works everywhere, so it won't type while Rewind runs.</span>`; }
 });
 
 poll();
