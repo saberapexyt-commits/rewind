@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.4"
+VERSION = "1.6.5"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -1290,6 +1290,11 @@ def main():
         if ctypes.windll.kernel32.GetLastError() == 183:  # already running: two copies would share one buffer
             ctypes.windll.user32.MessageBoxW(0, "Rewind is already running. Look for its icon in the system tray.", "Rewind", 0x40)
             return
+    try:                                                       # if Rewind ever crashes natively, this says where
+        import faulthandler
+        faulthandler.enable(open(DATA_DIR / "crash.log", "a", buffering=1), all_threads=True)
+    except Exception:
+        pass
     APP = App()
     log(f"Rewind {VERSION} starting")
     engine.LOG_FILE = str(LOG_FILE)

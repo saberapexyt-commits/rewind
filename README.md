@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.5
+
+- **Fixes a crash ("The memory could not be read").** Following your headphones started and stopped the Windows audio library every few seconds, which is not safe next to the running recording and could corrupt memory. Rewind now asks Windows directly which output is the default (a safe call that doesn't touch the audio library) and only restarts the sound capture, without stopping the recording, when you actually switch. The audio library is also locked so two parts of Rewind can't use it at once.
+- **A crash log.** If Rewind ever crashes again it now writes where it happened to `crash.log` next to the settings, so it can be found and fixed.
+
 ## 1.6.4
 
 - **Fixes dragging in the editor.** Once a clip, effect, text or sound was selected, you couldn't grab it again to move it or pull its edges, and pressing on it moved the playhead instead. A style meant for the clip player's trim box was also applying to selected timeline items. They're separate now.

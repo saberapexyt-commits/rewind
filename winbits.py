@@ -343,3 +343,59 @@ def to_recycle_bin(path):
         if ctypes.windll.shell32.SHFileOperationW(ctypes.byref(op)) == 0:
             return
     Path(path).unlink()
+
+
+def default_output_id():
+    """Windows' id for the current default speakers or headphones, or None. Read through the MMDevice API, which
+    leaves the audio library alone (starting and stopping that every few seconds is what crashed Rewind)."""
+    if os.name != "nt":
+        return None
+    import ctypes
+    import uuid
+    from ctypes import wintypes as w
+    ole = ctypes.WinDLL("ole32")
+    ole.CoInitializeEx.argtypes = [ctypes.c_void_p, w.DWORD]
+    ole.CoInitializeEx.restype = ctypes.c_long
+    ole.CoCreateInstance.argtypes = [ctypes.c_void_p, ctypes.c_void_p, w.DWORD, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p)]
+    ole.CoCreateInstance.restype = ctypes.c_long
+    ole.CoTaskMemFree.argtypes = [ctypes.c_void_p]
+    ole.CoUninitialize.argtypes = []
+
+    class GUID(ctypes.Structure):
+        _fields_ = [("a", ctypes.c_uint32), ("b", ctypes.c_uint16), ("c", ctypes.c_uint16), ("d", ctypes.c_ubyte * 8)]
+
+    def guid(s):
+        return GUID.from_buffer_copy(uuid.UUID(s).bytes_le)
+    release = ctypes.WINFUNCTYPE(ctypes.c_ulong, ctypes.c_void_p)
+    hr = ole.CoInitializeEx(None, 0)
+    must_uninit = hr in (0, 1)
+    enum, dev = ctypes.c_void_p(), ctypes.c_void_p()
+    try:
+        clsid, iid = guid("BCDE0395-E52F-467C-8E3D-C4579291692E"), guid("A95664D2-9614-4F35-A746-DE8DB63617E6")
+        if ole.CoCreateInstance(ctypes.byref(clsid), None, 1, ctypes.byref(iid), ctypes.byref(enum)) != 0 or not enum.value:
+            return None
+        vt = ctypes.cast(ctypes.cast(enum, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        get_default = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.c_void_p))(vt[4])
+        if get_default(enum, 0, 0, ctypes.byref(dev)) != 0 or not dev.value:     # eRender, eConsole
+            return None
+        dvt = ctypes.cast(ctypes.cast(dev, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))
+        get_id = ctypes.WINFUNCTYPE(ctypes.c_long, ctypes.c_void_p, ctypes.POINTER(ctypes.c_void_p))(dvt[5])
+        idp = ctypes.c_void_p()
+        if get_id(dev, ctypes.byref(idp)) != 0 or not idp.value:
+            return None
+        try:
+            return ctypes.wstring_at(idp.value)
+        finally:
+            ole.CoTaskMemFree(idp)
+    except Exception:
+        return None
+    finally:
+        try:
+            if dev.value:
+                release(ctypes.cast(ctypes.cast(dev, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))[2])(dev)
+            if enum.value:
+                release(ctypes.cast(ctypes.cast(enum, ctypes.POINTER(ctypes.c_void_p))[0], ctypes.POINTER(ctypes.c_void_p))[2])(enum)
+        except Exception:
+            pass
+        if must_uninit:
+            ole.CoUninitialize()

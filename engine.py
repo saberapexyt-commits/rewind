@@ -505,6 +505,9 @@ class ToneCapture(Capture):
         self.alive = False
 
 
+PA_LOCK = threading.RLock()      # the audio library isn't safe to start and stop from two threads at once
+
+
 def audio_devices():
     """Microphones the user can pick. Empty list if the audio library isn't installed."""
     if TEST:
@@ -513,17 +516,18 @@ def audio_devices():
         import pyaudiowpatch as pa_mod
     except ImportError:
         return []
-    pa = pa_mod.PyAudio()
-    try:
-        api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
-        out = []
-        for i in range(api["deviceCount"]):
-            d = pa.get_device_info_by_host_api_device_index(api["index"], i)
-            if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice"):
-                out.append({"id": d["name"], "name": d["name"]})
-        return out
-    finally:
-        pa.terminate()
+    with PA_LOCK:
+        pa = pa_mod.PyAudio()
+        try:
+            api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
+            out = []
+            for i in range(api["deviceCount"]):
+                d = pa.get_device_info_by_host_api_device_index(api["index"], i)
+                if d["maxInputChannels"] > 0 and not d.get("isLoopbackDevice"):
+                    out.append({"id": d["name"], "name": d["name"]})
+            return out
+        finally:
+            pa.terminate()
 
 
 def output_devices():
@@ -534,18 +538,19 @@ def output_devices():
         import pyaudiowpatch as pa_mod
     except ImportError:
         return []
-    pa = pa_mod.PyAudio()
-    try:
-        api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
-        default = pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
-        out = []
-        for i in range(api["deviceCount"]):
-            d = pa.get_device_info_by_host_api_device_index(api["index"], i)
-            if d["maxOutputChannels"] > 0 and not d.get("isLoopbackDevice") and all(o["id"] != d["name"] for o in out):
-                out.append({"id": d["name"], "name": d["name"], "default": d["name"] == default})
-        return out
-    finally:
-        pa.terminate()
+    with PA_LOCK:
+        pa = pa_mod.PyAudio()
+        try:
+            api = pa.get_host_api_info_by_type(pa_mod.paWASAPI)
+            default = pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
+            out = []
+            for i in range(api["deviceCount"]):
+                d = pa.get_device_info_by_host_api_device_index(api["index"], i)
+                if d["maxOutputChannels"] > 0 and not d.get("isLoopbackDevice") and all(o["id"] != d["name"] for o in out):
+                    out.append({"id": d["name"], "name": d["name"], "default": d["name"] == default})
+            return out
+        finally:
+            pa.terminate()
 
 
 def is_virtual_mic(name):
@@ -559,10 +564,11 @@ class AudioPump(threading.Thread):
     Loopback capture goes quiet when nothing is playing, so without this pump
     the audio would drift out of sync with the video."""
 
-    def __init__(self, write, desktop, mic, mic_name, on_error, output_name=None):
+    def __init__(self, write, desktop, mic, mic_name, on_error, output_name=None, clock=None):
         super().__init__(daemon=True)
         self.write, self.on_error = write, on_error
         self.out_note = ""
+        self.t0, self.written = clock or (time.monotonic(), 0)    # a replacement pump carries on the same clock
         self.alive = True
         self.levels = deque(maxlen=300 * 4)  # one peak value per 0.25 s
         self.sources, self.pa, self.mic_error = [], None, ""
@@ -571,7 +577,8 @@ class AudioPump(threading.Thread):
                 self.sources.append(ToneCapture())
             return
         import pyaudiowpatch as pa_mod
-        self.pa = pa_mod.PyAudio()
+        with PA_LOCK:
+            self.pa = pa_mod.PyAudio()
         api = self.pa.get_host_api_info_by_type(pa_mod.paWASAPI)
         if desktop:
             spk = self.pa.get_device_info_by_index(api["defaultOutputDevice"])
@@ -589,12 +596,7 @@ class AudioPump(threading.Thread):
                     if spk["name"] in lb["name"]:
                         spk = lb
                         break
-            self.desk = WasapiCapture(pa_mod, self.pa, spk)
-            self.sources.append(self.desk)
-            self.out_name = self.pa.get_device_info_by_index(api["defaultOutputDevice"])["name"]
-            self.spare_pa = None
-            if not output_name:                   # only follow Windows' default when no device was picked
-                threading.Thread(target=self._follow_output, args=(pa_mod,), daemon=True).start()
+            self.sources.append(WasapiCapture(pa_mod, self.pa, spk))
         self.mic_error = ""
         if mic:
           try:
@@ -617,17 +619,17 @@ class AudioPump(threading.Thread):
                               f"and that a mic is plugged in. ({e})")
 
     def run(self):
-        t0, written, acc_peak, acc_n = time.monotonic(), 0, 0.0, 0
+        acc_peak, acc_n = 0.0, 0
         try:
             while self.alive:
                 time.sleep(0.01)
-                n = int((time.monotonic() - t0) * RATE) - written
+                n = int((time.monotonic() - self.t0) * RATE) - self.written
                 if n <= 0:
                     continue
                 if n > RATE:
                     # The PC slept, or this thread was frozen for a while. Writing the whole gap as silence is what
                     # once put hours of audio into a short clip, so skip it and carry on in real time.
-                    written += n - RATE // 50
+                    self.written += n - RATE // 50
                     for s in self.sources:
                         with s.lock:
                             s.q.clear(); s.n = 0
@@ -642,60 +644,21 @@ class AudioPump(threading.Thread):
                     self.levels.append(round(acc_peak, 3))
                     acc_peak, acc_n = 0.0, 0
                 self.write((mix * 32767).astype(np.int16).tobytes())
-                written += n
+                self.written += n
         except (BrokenPipeError, OSError, ValueError):
             pass
         except Exception as e:
             self.on_error(f"Audio stopped: {e}")
 
-    def _follow_output(self, pa_mod):
-        """Headphones plugged in, output switched: move the game sound capture to the new default output."""
-        while self.alive:
-            time.sleep(3)
-            fresh = None
-            try:
-                fresh = pa_mod.PyAudio()
-                api = fresh.get_host_api_info_by_type(pa_mod.paWASAPI)
-                out = fresh.get_device_info_by_index(api["defaultOutputDevice"])
-                if out["name"] == self.out_name:
-                    fresh.terminate()
-                    continue
-                spk = out
-                if not spk.get("isLoopbackDevice"):
-                    for lb in fresh.get_loopback_device_info_generator():
-                        if spk["name"] in lb["name"]:
-                            spk = lb
-                            break
-                cap = WasapiCapture(pa_mod, fresh, spk)
-                old, old_pa = self.desk, self.spare_pa
-                self.sources = [cap if s is old else s for s in self.sources]
-                self.desk, self.spare_pa, self.out_name = cap, fresh, out["name"]
-                fresh = None
-                old.close()
-                if old_pa:
-                    old_pa.terminate()
-                self.output_changed = out["name"]
-            except Exception:
-                pass
-            finally:
-                if fresh is not None:
-                    try:
-                        fresh.terminate()
-                    except Exception:
-                        pass
-
     def stop(self):
         self.alive = False
         for s in self.sources:
             s.close()
-        if getattr(self, "spare_pa", None):
-            try:
-                self.spare_pa.terminate()
-            except Exception:
-                pass
+
         if self.pa:
             try:
-                self.pa.terminate()
+                with PA_LOCK:
+                    self.pa.terminate()
             except Exception:
                 pass
 
@@ -960,6 +923,7 @@ class Recorder:
         self.low_disk, self.free_gb, self._low_stopping = False, 0.0, False
         threading.Thread(target=self._watchdog, daemon=True).start()
         threading.Thread(target=self._health, daemon=True).start()
+        threading.Thread(target=self._output_watch, daemon=True).start()
 
     # ---- lifecycle
     def start(self):
@@ -1204,6 +1168,51 @@ class Recorder:
                                                     ", or update ffmpeg so Rewind can record the game window") + ".")
             except Exception as e:
                 self.log(f"health check: {e}")
+
+    def _output_watch(self):
+        """Headphones plugged in or the output switched: move the game sound capture to the new default."""
+        import winbits
+        last, pending = None, None
+        while True:
+            time.sleep(3)
+            try:
+                if TEST or self.state != "buffering" or not self.pump or self.settings.get("output_device") or not self.settings.get("desktop_audio", True):
+                    last = None
+                    continue
+                cur = winbits.default_output_id()
+                if not cur:
+                    continue
+                if last is None:
+                    last = cur
+                elif cur != last:
+                    if pending == cur:              # the same new device on two checks in a row
+                        last, pending = cur, None
+                        self.swap_audio()
+                    else:
+                        pending = cur
+                else:
+                    pending = None
+            except Exception as e:
+                self.log(f"output check: {e}")
+
+    def swap_audio(self):
+        """Start a fresh audio capture on the same recording, so the new output device is picked up without a restart."""
+        with self.lock:
+            old = self.pump
+            if not (old and self.proc and self.proc.poll() is None and self.has_audio):
+                return
+            s = self.settings
+            old.stop()
+            old.join(3)
+            try:
+                self.pump = AudioPump(self.proc.stdin.write, s["desktop_audio"], s["mic"], s.get("mic_device"), on_error=self._set_error,
+                                      output_name=s.get("output_device"), clock=(old.t0, old.written))
+                self.pump.start()
+                self.log("the sound output changed, moved the game sound capture to it")
+            except Exception as e:
+                self.log(f"couldn't move the sound capture: {e}")
+                self.pump = AudioPump(self.proc.stdin.write, False, False, None, on_error=self._set_error, clock=(old.t0, old.written))
+                self.pump.start()
 
     def _disk_check(self):
         free = min(free_bytes(tempfile.gettempdir()), free_bytes(self.settings.get("clips_dir")))
