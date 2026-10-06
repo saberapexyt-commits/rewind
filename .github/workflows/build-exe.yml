@@ -51,5 +51,4 @@ jobs:
         with:
           files: dist/Rewind/Rewind.exe
           name: Rewind ${{ github.ref_name }}
-          body: |
-            Download **Rewind.exe** and run it. That's the whole app: on first run it fetches its video tools by itself, and after that it updates itself.
+          body_path: release-notes.md

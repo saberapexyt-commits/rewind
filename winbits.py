@@ -175,10 +175,48 @@ def _lowpass(np, x, cutoff):
     return y
 
 
+def _pluck(np, freq, dur, decay):
+    """A soft, bright pluck: fundamental plus quickly fading overtones."""
+    n = int(SOUND_RATE * dur)
+    t = np.arange(n) / SOUND_RATE
+    out = np.zeros(n)
+    for k, (ratio, amp, dk) in enumerate(((1, 1.0, 1.0), (2, 0.45, 0.5), (3, 0.22, 0.32), (4, 0.1, 0.2))):
+        out += amp * np.sin(2 * np.pi * freq * ratio * t) * np.exp(-t / (decay * dk))
+    return out * np.minimum(1, t / 0.002)
+
+
 def _synth(name):
     np = _np()
     rng = np.random.default_rng(7)
-    if name == "chime":
+    if name == "clip":
+        # four quick plucks climbing an E major arpeggio, then a shimmer: "got it"
+        buf = np.zeros(int(SOUND_RATE * 0.75))
+        for at, fr, amp in ((0.0, 659.25, 0.7), (0.07, 830.61, 0.75), (0.14, 987.77, 0.8), (0.21, 1318.51, 1.0)):
+            _place(np, buf, amp * _pluck(np, fr, 0.5, 0.16), at)
+        _place(np, buf, 0.25 * _bell(np, 2637.0, 0.5, 0.18), 0.21)
+        sig = _space(np, buf, wet=0.16)
+    elif name == "rewind":
+        # a tape zipping backwards, a click, then two bright notes
+        buf = np.zeros(int(SOUND_RATE * 0.85))
+        n = int(SOUND_RATE * 0.26)
+        t = np.arange(n) / SOUND_RATE
+        f = 260 * (3600 / 260) ** (t / t[-1])                              # exponential sweep up
+        zip_ = np.sin(2 * np.pi * np.cumsum(f) / SOUND_RATE)
+        flutter = 0.65 + 0.35 * np.sin(2 * np.pi * 42 * t)                # the spinning reel
+        grit = _lowpass(np, rng.standard_normal(n), 6000) * 0.5
+        zip_ = (zip_ * 0.6 + grit) * flutter * np.minimum(1, t / 0.02) * np.minimum(1, (t[-1] - t) / 0.03)
+        _place(np, buf, 0.55 * zip_, 0.0)
+        m = int(SOUND_RATE * 0.02)
+        _place(np, buf, 0.8 * _lowpass(np, rng.standard_normal(m), 3500) * _env(np, m, 0.0005, 0.005), 0.26)
+        _place(np, buf, 0.8 * _pluck(np, 880.0, 0.5, 0.2), 0.285)
+        _place(np, buf, 1.0 * _pluck(np, 1318.51, 0.55, 0.25), 0.375)
+        sig = _space(np, buf, wet=0.14)
+    elif name == "ping":
+        buf = np.zeros(int(SOUND_RATE * 0.9))
+        _place(np, buf, _bell(np, 1567.98, 0.85, 0.3), 0.0)
+        _place(np, buf, 0.18 * _bell(np, 3135.96, 0.5, 0.12), 0.0)
+        sig = _space(np, buf, wet=0.12)
+    elif name == "chime":
         buf = np.zeros(int(SOUND_RATE * 0.9))
         _place(np, buf, 0.55 * _bell(np, 1174.7, 0.8, 0.22), 0.0)     # D6
         _place(np, buf, 0.75 * _bell(np, 1760.0, 0.8, 0.30), 0.085)   # A6, a fifth up
@@ -217,8 +255,8 @@ def _synth(name):
 
 
 def sound_file(name, volume="medium"):
-    name = name if name in ("chime", "shutter", "pop", "error") else "chime"
-    p = Path(tempfile.gettempdir()) / f"rewind-{name}-{volume}-v2.wav"
+    name = name if name in ("clip", "rewind", "ping", "chime", "shutter", "pop", "error") else "clip"
+    p = Path(tempfile.gettempdir()) / f"rewind-{name}-{volume}-v3.wav"
     if not p.exists():
         np = _np()
         sig = _synth(name) * VOLUMES.get(volume, 0.6) * 0.95
@@ -238,7 +276,7 @@ def play_sound(name, volume="medium"):
         pass
 
 
-def play_saved_sound(name="chime", volume="medium"):
+def play_saved_sound(name="clip", volume="medium"):
     play_sound(name, volume)
 
 

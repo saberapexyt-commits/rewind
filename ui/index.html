@@ -407,6 +407,15 @@
     padding: 10px 12px 10px 18px; border-radius: 14px; background: #1a1a1f; border: 1px solid #2c2c33; box-shadow: 0 14px 40px rgba(0,0,0,.6); }
   .selbar span { font-weight: 700; margin-right: 8px; white-space: nowrap; }
   .selbar .btn.danger { background: #3a1a20; color: #ff7b8c; } .selbar .btn.danger.armed { background: #e0364f; color: #fff; }
+
+  /* ===== update banner ===== */
+  .updbar { position: sticky; top: 0; z-index: 6; display: flex; align-items: center; gap: 16px; margin: 0; padding: 12px 22px;
+    background: linear-gradient(90deg, rgba(34, 193, 241, .16), rgba(34, 193, 241, .06)); border-bottom: 1px solid rgba(34, 193, 241, .3); backdrop-filter: blur(8px); }
+  .updtext { flex: 1; min-width: 0; font-size: 14px; } .updtext b { font-weight: 700; } .updtext span { color: #b7c2d6; }
+  .updprog { height: 4px; border-radius: 2px; background: rgba(255,255,255,.12); margin-top: 8px; max-width: 420px; overflow: hidden; }
+  .updprog i { display: block; height: 100%; width: 0; background: var(--accent2); transition: width .2s; }
+  .updbtns { display: flex; gap: 8px; flex-shrink: 0; }
+  .updbtns .btn { height: 32px; font-size: 13px; }
 </style>
 </head>
 <body class="paused">
@@ -448,6 +457,10 @@
 </nav>
 
 <main id="main">
+  <div class="updbar" id="updbar" hidden>
+    <div class="updtext"><b id="updtitle"></b> <span id="updsub"></span><div class="updprog" id="updprog" hidden><i id="updfill"></i></div></div>
+    <div class="updbtns"><button class="btn primary" id="updnow">Update now</button><button class="btn" id="updlater">Later</button><button class="btn" id="updskip">Skip</button></div>
+  </div>
   <!-- HOME -->
   <section class="page on" id="page-home">
     <div class="toolbar">
@@ -582,7 +595,7 @@
         <button class="btn primary" id="upcheck">Check for updates</button>
       </div>
       <div class="set">
-        <div class="lbl"><b>Download updates automatically</b><small>New versions download in the background. You choose when to restart.</small></div>
+        <div class="lbl"><b>Download updates in the background</b><small>So Update now is instant. Rewind never restarts without asking.</small></div>
         <label class="switch"><input type="checkbox" id="opt-autoupdate"><span></span></label>
       </div>
     </div>
@@ -736,6 +749,7 @@ function render() {
   $("updatebtn").disabled = !!(S.update && S.update.downloading);
   $("footver").textContent = "Rewind v" + S.version;
   renderUpdates();
+  renderUpdBanner();
 
   const pill = $("pill");
   pill.className = "pill " + ({ buffering: "", saving: "saving", error: "error" }[state] ?? "paused");
@@ -1151,6 +1165,29 @@ async function set(patch) {
   await api("/api/settings", patch);
 }
 
+let laterFor = "";
+function updNote(u) {
+  const line = (u.notes || "").split(/\r?\n/).map((l) => l.replace(/^[-*#\s]+/, "").replace(/\*\*/g, "").trim()).find((l) => l && !/^download /i.test(l));
+  return line || "";
+}
+function renderUpdBanner() {
+  const u = S.update;
+  const show = !!u && u.version !== S.settings.skipped_version && (laterFor !== u.version || u.downloading || u.installing);
+  $("updbar").hidden = !show;
+  $("updatebtn").hidden = true;
+  if (!show) return;
+  const busy = u.downloading || u.installing;
+  $("updtitle").textContent = u.installing ? "Restarting Rewind…" : u.downloading ? `Downloading Rewind ${u.version}…` : `Rewind ${u.version} is available.`;
+  $("updsub").textContent = busy ? (u.installing ? "" : `${u.progress || 0}%`) : `You're using ${S.version}. ${updNote(u)}`;
+  $("updprog").hidden = !u.downloading; $("updfill").style.width = (u.progress || 0) + "%";
+  $("updnow").disabled = busy; $("updlater").hidden = busy; $("updskip").hidden = busy;
+  $("updnow").textContent = u.installing ? "Restarting…" : u.downloading ? "Downloading…" : "Update now";
+  if (u.error && !busy) $("updsub").textContent = u.error;
+}
+$("updnow").onclick = () => api("/api/update/now");
+$("updlater").onclick = () => { laterFor = S.update ? S.update.version : ""; renderUpdBanner(); };
+$("updskip").onclick = async () => { if (S.update) { S.settings.skipped_version = S.update.version; await api("/api/update/skip", { version: S.update.version }); renderUpdBanner(); } };
+
 function renderUpdates() {
   const u = S.update, us = S.update_status || {}, line = $("upline");
   $("opt-autoupdate").checked = S.settings.auto_update !== false;
@@ -1158,15 +1195,15 @@ function renderUpdates() {
   $("up-ver").textContent = "Rewind v" + S.version;
   let title, sub = "", btn = "Check for updates", dis = false, cls = "";
   if (us.state === "checking") { title = "Checking for updates…"; btn = "Checking…"; dis = true; }
-  else if (u && u.ready) { title = `Version ${u.version} is ready`; sub = "Restart Rewind to finish updating. Your buffer starts again right after."; btn = "Restart to update"; }
-  else if (u && u.downloading) { title = `Downloading version ${u.version}…`; sub = "You can keep playing. This only takes a moment."; btn = "Downloading…"; dis = true; }
-  else if (u) { title = `Version ${u.version} is available`; sub = u.auto ? "Press the button to download it." : "Opens the download page."; btn = u.auto ? "Download update" : "Get v" + u.version; }
+  else if (u && u.installing) { title = "Restarting Rewind…"; btn = "Restarting…"; dis = true; }
+  else if (u && u.downloading) { title = `Downloading version ${u.version}…`; sub = `${u.progress || 0}% · you can keep playing.`; btn = "Downloading…"; dis = true; }
+  else if (u) { title = `Version ${u.version} is available`; sub = u.auto ? "Rewind will download it, restart, and be back in a few seconds." : "Opens the download page."; btn = u.auto ? "Update now" : "Get v" + u.version; }
   else if (us.state === "error") { title = "Couldn't check for updates"; sub = us.error; cls = "cpu"; }
   else { title = "Rewind is up to date"; sub = us.checked ? "Last checked " + new Date(us.checked * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; }
   line.className = "gpu-line " + cls; $("up-title").textContent = title; $("up-sub").textContent = sub;
   $("up-notes").textContent = u && u.notes ? u.notes.split(/\r?\n/).find((l) => l.trim()) || "" : "Checks for updates by itself every few hours.";
   $("upcheck").textContent = btn; $("upcheck").disabled = dis;
-  $("upcheck").onclick = () => u && u.ready ? api("/api/update/apply") : u && !u.auto ? api("/api/open-url", { url: u.url }) : api("/api/update/check");
+  $("upcheck").onclick = () => u ? api("/api/update/now") : api("/api/update/check");
 }
 function renderSettings() {
   if (!S) return;
@@ -1189,7 +1226,7 @@ function renderSettings() {
   mon.innerHTML = S.monitors.map((m) => `<option value="${m.index}" ${m.index == s.monitor ? "selected" : ""}>${esc(m.label)}</option>`).join("");
   mon.onchange = () => set({ monitor: Number(mon.value) });
 
-  seg("seg-sound", [["chime", "Chime"], ["shutter", "Shutter"], ["pop", "Pop"], ["off", "Off"]], s.sound_name, "sound_name");
+  seg("seg-sound", [["clip", "Clip"], ["rewind", "Rewind"], ["ping", "Ping"], ["chime", "Chime"], ["shutter", "Shutter"], ["pop", "Pop"], ["off", "Off"]], s.sound_name, "sound_name");
   seg("seg-volume", [["quiet", "Quiet"], ["medium", "Medium"], ["loud", "Loud"]], s.sound_volume, "sound_volume");
   $("seg-volume").parentElement.style.display = s.sound_name === "off" ? "none" : "flex";
   $("seg-sound").querySelectorAll("button").forEach((b) => b.addEventListener("click", () => b.dataset.v !== "off" && api("/api/sound/preview", { name: b.dataset.v, volume: S.settings.sound_volume })));

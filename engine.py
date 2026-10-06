@@ -761,33 +761,25 @@ class Recorder:
             final = clips_dir / f"{title} {stamp} ({n}).mp4"
             n += 1
         work = Path(tempfile.mkdtemp(prefix="rewind-save-"))
+        part = final.with_name(final.stem + ".part")
         try:
-            # snapshot the segments first, so the ring can't overwrite them mid-copy
-            snap = []
-            for i, f in enumerate(files):
-                d = work / f"{i:03d}.ts"
-                shutil.copyfile(f, d)
-                snap.append(d)
+            # One pass, straight from the buffer: the ring keeps a few spare pieces so nothing we read is reused
+            # while we copy. Every piece starts on a keyframe, so dropping whole pieces is the trim.
             lst = work / "list.txt"
-            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in snap), encoding="utf-8")
-            joined = work / "joined.mp4"
+            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in files), encoding="utf-8")
             r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                     "-c", "copy", "-movflags", "+faststart", str(joined)], timeout=120)
-            if r.returncode != 0 or not joined.exists():
-                raise RuntimeError("Couldn't join the buffer: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
-            total = duration_of(joined)
-            cut = keyframe_at_or_before(joined, total - length + 0.3)
-            if cut > 0.5:
-                r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-ss", f"{cut + 0.01:.3f}", "-i", str(joined),
-                         "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", str(final)],
-                        timeout=120)
-                if r.returncode != 0:
-                    shutil.copyfile(joined, final)
-            else:
-                shutil.copyfile(joined, final)
+                     "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=300)
+            if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
+                raise RuntimeError("Couldn't save the clip: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
+            os.replace(part, final)
         finally:
             shutil.rmtree(work, ignore_errors=True)
-        make_thumb(final)
+            if part.exists():
+                try:
+                    part.unlink()
+                except OSError:
+                    pass
+        threading.Thread(target=make_thumb, args=(final,), daemon=True).start()
         self.last_saved = final.name
         self.log(f"saved {final}")
         return final

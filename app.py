@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.7"
+VERSION = "1.0.8"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -51,9 +51,9 @@ DEFAULTS = {
     "length": 30, "fps": 60, "quality": "balanced", "encoder": "auto", "monitor": 0,
     "desktop_audio": True, "mic": True, "mic_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
-    "sound": True, "sound_name": "chime", "sound_volume": "medium",
+    "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
-    "close_to_tray": True, "auto_update": True, "start_hidden": False,
+    "close_to_tray": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
 RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture"}
@@ -123,11 +123,11 @@ class App:
             if not (self.update and self.update.get("version") == tag.lstrip("v")):
                 self.update = {"version": tag.lstrip("v"), "url": rel.get("html_url") or WEBSITE,
                                "notes": (rel.get("body") or "").strip()[:600],
-                               "ready": False, "auto": bool(asset and getattr(sys, "frozen", False))}
+                               "ready": False, "auto": bool(asset and getattr(sys, "frozen", False)), "asset": asset}
             self.update_status["state"] = "available"
             log(f"update available: {tag}")
-            if self.update["auto"] and not self.update["ready"] and (manual or self.settings.get("auto_update", True)):
-                self.update["downloading"] = True
+            if (self.update["auto"] and not self.update["ready"] and not self.update.get("downloading")
+                    and (manual or self.settings.get("auto_update", True))):
                 self.download_update(asset)
         except Exception as e:
             log(f"update check failed: {e}")
@@ -142,20 +142,53 @@ class App:
         import urllib.request
         UPDATE_DIR.mkdir(parents=True, exist_ok=True)
         part = UPDATE_DIR / "Rewind-new.exe.part"
+        self.update.update(downloading=True, progress=0)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Rewind"})
             with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
-                shutil.copyfileobj(r, f)
+                total, got = int(r.headers.get("Content-Length") or 0), 0
+                while True:
+                    chunk = r.read(1 << 18)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    got += len(chunk)
+                    if total:
+                        self.update["progress"] = int(got * 100 / total)
             if part.stat().st_size < 1_000_000:
                 raise RuntimeError("downloaded file is too small")
             part.replace(UPDATE_DIR / "Rewind-new.exe")
-            self.update["ready"] = True
-            self.update["downloading"] = False
+            self.update.update(ready=True, downloading=False, progress=100)
             log("update downloaded, ready to install")
         except Exception as e:
             log(f"update download failed: {e}")
-            self.update["auto"] = False  # fall back to opening the release page
-            self.update["downloading"] = False
+            self.update.update(auto=False, downloading=False, error="The download didn't finish. Try again in a moment.")
+
+    def update_now(self):
+        """The banner's Update now: download if needed, then swap the exe and relaunch by itself."""
+        u = self.update
+        if not u:
+            return False
+        if not u.get("auto"):
+            import webbrowser
+            webbrowser.open(u["url"])
+            return True
+
+        def go():
+            if not u["ready"]:
+                if u.get("downloading"):
+                    while u.get("downloading"):
+                        time.sleep(0.3)
+                else:
+                    u.pop("error", None)
+                    self.download_update(u["asset"])
+            if u["ready"]:
+                u["installing"] = True
+                time.sleep(0.6)
+                self.apply_update()
+
+        threading.Thread(target=go, daemon=True).start()
+        return True
 
     def apply_update(self):
         """Swap in the downloaded exe and relaunch. A tiny batch file does it after this process exits."""
@@ -211,8 +244,9 @@ class App:
             folder = Path(self.settings["clips_dir"])
             if game and self.settings.get("game_folders", True):
                 folder = folder / engine.safe_name(game["name"])
+            if self.rec.state == "buffering" and self.rec.order:
+                winbits.play_saved_sound(self.settings.get("sound_name", "clip"), self.settings.get("sound_volume", "medium"))
             p = self.rec.save(folder, title=game["name"] if game else None)
-            winbits.play_saved_sound(self.settings.get("sound_name", "chime"), self.settings.get("sound_volume", "medium"))
             rel = p.relative_to(Path(self.settings["clips_dir"])).as_posix()
             self.events.append({"id": time.time(), "kind": "saved", "name": rel})
             return {"ok": True, "name": rel}
@@ -533,6 +567,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, APP.save_replay())
             if path == "/api/update/check":
                 threading.Thread(target=APP.check_update, kwargs={"manual": True}, daemon=True).start()
+                return self._send(200, {"ok": True})
+            if path == "/api/update/now":
+                return self._send(200, {"ok": APP.update_now()})
+            if path == "/api/update/skip":
+                APP.update_settings({"skipped_version": str(body.get("version", ""))})
                 return self._send(200, {"ok": True})
             if path == "/api/update/apply":
                 return self._send(200, {"ok": APP.apply_update()})

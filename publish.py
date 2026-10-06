@@ -98,6 +98,14 @@ def collect_files():
     return files
 
 
+def write_release_notes(version):
+    """Release notes = this version's section of README.md. The app shows the first line in its update banner."""
+    text = (HERE / "README.md").read_text(encoding="utf-8")
+    m = re.search(rf"^## {re.escape(version)}\s*\n(.*?)(?=^## |\Z)", text, re.M | re.S)
+    body = (m.group(1).strip() if m else "") or f"Rewind {version}."
+    (HERE / "release-notes.md").write_text(body + "\n\nDownload **Rewind.exe** and run it. Installed copies update themselves.\n", encoding="utf-8")
+
+
 def main():
     ap = argparse.ArgumentParser(description="Publish Rewind to GitHub.")
     ap.add_argument("--repo", default="rewind", help="repo name (default: rewind)")
@@ -111,6 +119,7 @@ def main():
     version = m.group(1)
     tag = f"v{version}"
 
+    write_release_notes(version)
     token, fresh = get_token(args)
     try:
         me, headers = call("GET", "/user", token)

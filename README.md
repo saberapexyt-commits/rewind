@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.8
+
+- Saving a replay is much faster, even for 2 and 5 minute clips. The clip is written in a single pass and the sound plays the moment you press the key.
+- Four new save sounds: Clip, Rewind, Ping and Chime. Clip is the new default.
+- Updates work like AutoClip's now: a banner offers Update now, Later or Skip, shows the download progress, and restarts Rewind for you.
+
 ## 1.0.7
 
 - Removed the "shortcut already in use" warning from Home. Rewind now retries quietly at startup, which fixes it after an update.
