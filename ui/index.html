@@ -464,6 +464,7 @@
   .consent { margin-top: 10px; padding: 10px 12px; border-radius: 10px; background: #1f1c10; border: 1px solid #4a4220; font-size: 12.5px; } .consent p { margin: 0 0 8px; color: #e9dfae; }
   .shstat { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); min-height: 16px; } .shstat.bad { color: #ff7b8c; }
 </style>
+<link rel="stylesheet" href="/editor.css">
 </head>
 <body class="paused">
 
@@ -710,6 +711,7 @@
         </div>
       </div>
 
+      <button class="btn primary" id="openeditor">Open in editor</button>
       <button class="btn" id="reveal">Show in folder</button>
       <button class="btn danger" id="delete">Delete</button>
       <button class="btn" id="closeplayer" aria-label="Close player">Close</button>
@@ -1312,6 +1314,11 @@ $("sh-no").onclick = () => { $("sh-consent").hidden = true; };
 $("sh-urlcopy").onclick = () => { $("sh-url").select(); try { navigator.clipboard.writeText($("sh-url").value); } catch (e) { document.execCommand("copy"); } shStat("Link copied."); };
 
 /* header actions */
+$("openeditor").onclick = () => {
+  const name = current, range = trimmed() ? { start: V.ts, end: V.te } : null;
+  closePlayer();
+  Editor.open(name, range);
+};
 $("closeplayer").onclick = closePlayer;
 $("modal").addEventListener("click", (e) => { if (e.target === $("modal")) closePlayer(); });
 $("prevclip").onclick = () => go2(-1); $("nextclip").onclick = () => go2(1);
@@ -1548,5 +1555,6 @@ document.addEventListener("keydown", async (e) => {
 
 poll();
 </script>
+<script src="/editor.js" defer></script>
 </body>
 </html>

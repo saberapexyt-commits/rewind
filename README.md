@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.3.0
+
+- **Video editor.** Open any clip and press Open in editor: a multi-clip timeline with split, trim, reorder, speed (0.25x to 4x), volume, fades, brightness / contrast / saturation, text with fonts, colours and outlines, music and sound tracks, 16:9 / 9:16 / 1:1 / 4:5 canvases with Fit, Fill or Fit + blur, undo and redo, and an export to a normal mp4.
+
 ## 1.2.1
 
 - Links and Discord-sized copies are limited to clips of 10 minutes or less. Longer ones can be trimmed and saved as a copy first. Copying the file has no limit.

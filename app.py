@@ -15,14 +15,15 @@ import traceback
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import unquote, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
+import editor
 import engine
 import games
 import share
 import winbits
 
-VERSION = "1.2.1"
+VERSION = "1.3.0"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -109,6 +110,8 @@ class App:
         self.tray_hint_shown = False
         self.update = None  # {"version", "url", ...} when GitHub has a newer release
         self.update_status = {"state": "idle", "checked": None, "error": ""}
+        self.ext_files = {}   # audio files picked in the editor: id -> path
+        self.jobs = {}        # editor exports in progress
         self._durations = {}
 
     def check_update(self, manual=False):
@@ -492,6 +495,90 @@ class App:
                 except OSError:
                     pass
 
+    # ---- video editor
+    def resolve_src(self, src):
+        if str(src).startswith("ext:"):
+            p = self.ext_files.get(src[4:])
+            if not p or not Path(p).exists():
+                raise ValueError("That audio file isn't available any more.")
+            return Path(p)
+        return self.clip_path(src)
+
+    def pick_audio(self):
+        types = ("Audio and video (*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.mp4;*.mov;*.mkv;*.webm)", "All files (*.*)")
+        try:
+            if self.window:
+                import webview
+                r = self.window.create_file_dialog(webview.OPEN_DIALOG, file_types=types)
+                path = r[0] if r else None
+            else:
+                import tkinter
+                from tkinter import filedialog
+                root = tkinter.Tk(); root.withdraw(); root.attributes("-topmost", True)
+                path = filedialog.askopenfilename(title="Choose music or a sound",
+                                                  filetypes=[("Audio and video", "*.mp3 *.wav *.m4a *.aac *.ogg *.flac *.opus *.mp4 *.mov *.mkv *.webm"), ("All files", "*.*")])
+                root.destroy()
+        except Exception as e:
+            log(f"audio dialog failed: {e}")
+            path = None
+        if not path:
+            return {"ok": False}
+        fid = secrets.token_hex(6)
+        self.ext_files[fid] = str(path)
+        return {"ok": True, "id": "ext:" + fid, "name": Path(path).stem}
+
+    def start_export(self, body):
+        project = body.get("project") or {}
+        try:
+            for c in (project.get("video") or []) + (project.get("audio") or []):
+                self.resolve_src(c["src"])
+        except (ValueError, KeyError) as e:
+            return {"ok": False, "error": str(e) or "One of the clips is missing."}
+        if not project.get("video"):
+            return {"ok": False, "error": "Add a clip to the timeline first."}
+        out_dir = Path(self.settings["clips_dir"]) / "Edits"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        base = engine.safe_name(body.get("title") or "Edit")
+        out, n = out_dir / f"{base}.mp4", 2
+        while out.exists():
+            out, n = out_dir / f"{base} {n}.mp4", n + 1
+        q = editor.QUALITY.get(body.get("quality"), "balanced")
+        cap = 720 if int(body.get("res") or 1080) <= 720 else 1080
+
+        def enc_for():
+            tries = [engine.video_args(self.rec.encoder, q, 30)]
+            if self.rec.encoder != "cpu":
+                tries.append(engine.video_args("cpu", q, 30))
+            return tries
+
+        job = editor.Job()
+        job.name = ""
+        self.jobs[job.id] = job
+        threading.Thread(target=editor.run_job, args=(job, project, self.resolve_src, out, enc_for, cap, log), daemon=True).start()
+        return {"ok": True, "job": job.id}
+
+    def job_state(self, jid):
+        job = self.jobs.get(jid)
+        if not job:
+            return {"pct": 0, "done": True, "error": "That export isn't running."}
+        rel = ""
+        if job.done and job.name and not job.error:
+            try:
+                rel = Path(job.name).relative_to(Path(self.settings["clips_dir"])).as_posix()
+            except ValueError:
+                rel = Path(job.name).name
+        return {"pct": round(job.pct, 1), "done": job.done, "error": job.error, "rel": rel}
+
+    def cancel_export(self, jid):
+        job = self.jobs.get(jid)
+        if job and not job.done:
+            job.cancelled = True
+            try:
+                if job.proc:
+                    job.proc.kill()
+            except Exception:
+                pass
+
     def clip_path(self, name):
         """A clip in the clips folder or one game folder below it. Nothing else."""
         d = Path(self.settings["clips_dir"]).resolve()
@@ -621,6 +708,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, html.encode(), "text/html; charset=utf-8")
             if path == "/logo.png" and (RES_DIR / "logo.png").exists():
                 return self._send(200, (RES_DIR / "logo.png").read_bytes(), "image/png")
+            if path in ("/editor.js", "/editor.css"):
+                f = UI_FILE.parent / path[1:]
+                return self._send(200, f.read_bytes(), "text/javascript; charset=utf-8" if path.endswith(".js") else "text/css; charset=utf-8")
+            if path == "/api/editor/job":
+                return self._send(200, APP.job_state(parse_qs(urlparse(self.path).query).get("id", [""])[0]))
+            if path.startswith("/ext/"):
+                p = APP.ext_files.get(unquote(path[5:]))
+                if p and Path(p).exists():
+                    return self._media(Path(p))
+                return self._send(404, {"error": "not found"})
             if path == "/api/state":
                 return self._send(200, APP.state())
             if path == "/api/clips":
@@ -710,6 +807,13 @@ class Handler(BaseHTTPRequestHandler):
                     APP.update_settings({key: old})
                     APP.hotkeys[w].error = err
                     return self._send(200, {"ok": False, "error": err})
+                return self._send(200, {"ok": True})
+            if path == "/api/editor/pick-audio":
+                return self._send(200, APP.pick_audio())
+            if path == "/api/editor/export":
+                return self._send(200, APP.start_export(body))
+            if path == "/api/editor/cancel":
+                APP.cancel_export(body.get("id", ""))
                 return self._send(200, {"ok": True})
             if path == "/api/long/toggle":
                 threading.Thread(target=APP.toggle_long, daemon=True).start()
