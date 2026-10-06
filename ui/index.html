@@ -570,6 +570,10 @@
         <div class="lbl"><b>Sound when saved</b><small>So you know it worked without leaving the game.</small></div>
         <div class="stack"><div class="seg" id="seg-sound"></div><div style="display:flex;gap:8px;align-items:center"><div class="seg" id="seg-volume"></div><button class="btn" id="playsound">Play</button></div></div>
       </div>
+      <div class="set">
+        <div class="lbl"><b>"Clip captured" pop-up</b><small>A card at the top left of the screen being recorded when a clip is saved. It isn't recorded in your clips.</small></div>
+        <div style="display:flex;gap:10px;align-items:center"><button class="btn" id="previewtoast">Preview</button><label class="switch"><input type="checkbox" id="opt-toast"><span></span></label></div>
+      </div>
     </div>
 
     <div class="card">
@@ -1464,6 +1468,7 @@ function renderSettings() {
     ? ({ "known game": "Recognised from Rewind's list of games.", "game library": "Found in a game library folder (Steam, Epic, Riot and others).", "fullscreen app": "Spotted because it fills the whole screen." }[g.reason] || "") + (g.focused ? "" : " It's in the background right now.")
     : "Open a game and it shows up here.";
   $("opt-gameonly").checked = s.game_only; $("opt-gameonly").onchange = (e) => set({ game_only: e.target.checked });
+  $("opt-toast").checked = s.clip_toast !== false; $("opt-toast").onchange = (e) => set({ clip_toast: e.target.checked });
   $("opt-gamefolders").checked = s.game_folders; $("opt-gamefolders").onchange = (e) => set({ game_folders: e.target.checked });
   const wc = st.window_capture;
   seg("seg-capture", [["auto", "Automatic"], ["screen", "Whole screen"], ["window", "Game window", !wc]], s.capture, "capture");
@@ -1500,6 +1505,7 @@ function nameFor(exe) {
   return r ? r.name : exe;
 }
 async function poll1() { S = await get("/api/state"); render(); }
+$("previewtoast").onclick = () => api("/api/overlay/preview", {});
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
 $("openlog").onclick = () => api("/api/open-log");
 $("copydiag").onclick = async () => { const r = await api("/api/diagnostics"); $("diag-note").textContent = r.ok ? "Copied. Paste it into your message." : "Couldn't copy. Use Show log file instead."; };

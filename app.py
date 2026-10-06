@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.5"
+VERSION = "1.5.6"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -58,7 +58,7 @@ DEFAULTS = {
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
     "hotkey_bookmark": None, "share_ok": False,
-    "sound": True, "sound_name": "clip", "sound_volume": "medium",
+    "clip_toast": True, "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "capture_input": "", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
     "close_to_tray": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
@@ -270,6 +270,7 @@ class App:
             p = self.rec.save(folder, title=game["name"] if game else None)
             rel = p.relative_to(Path(self.settings["clips_dir"])).as_posix()
             self.events.append({"id": time.time(), "kind": "saved", "name": rel})
+            self.show_toast(game["name"] if game else "Screen")
             return {"ok": True, "name": rel}
         except Exception as e:
             log("save failed: " + traceback.format_exc())
@@ -277,6 +278,23 @@ class App:
                 winbits.play_error_sound(self.settings.get("sound_volume", "medium"))
             self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
             return {"ok": False, "error": str(e)}
+
+    def show_toast(self, name, force=False):
+        """The "Clip captured" card on the screen being recorded."""
+        if not (force or self.settings.get("clip_toast", True)):
+            return
+        try:
+            import overlay
+            mons = winbits.monitors()
+            idx = int(self.settings.get("monitor", 0) or 0)
+            m = mons[idx] if 0 <= idx < len(mons) else mons[0]
+            if "x" not in m:
+                return
+            n = int(self.settings.get("length", 30))
+            span = f"{n // 60} min" if n >= 60 and n % 60 == 0 else f"{n} seconds"
+            overlay.show((m["x"], m["y"], m["w"], m["h"]), "Clip captured", f"{name}  ·  last {span}", "SAVED")
+        except Exception as e:
+            log(f"pop-up failed: {e}")
 
     def toggle(self):
         if self.rec.wanted:
@@ -1067,6 +1085,9 @@ class Handler(BaseHTTPRequestHandler):
                     import webbrowser
                     webbrowser.open(url)
                 return self._send(200, {"ok": url in allowed})
+            if path == "/api/overlay/preview":
+                APP.show_toast("Preview", force=True)
+                return self._send(200, {"ok": True})
             if path == "/api/sound/preview":
                 winbits.play_sound(body.get("name", "chime"), body.get("volume", "medium"))
                 return self._send(200, {"ok": True})
