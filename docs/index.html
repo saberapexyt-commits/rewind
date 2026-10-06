@@ -29,6 +29,7 @@
     font: 16px/1.6 Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, Roboto, sans-serif;
     -webkit-font-smoothing: antialiased; padding-bottom: env(safe-area-inset-bottom, 0px);
   }
+  main { overflow-x: clip; }
   a { color: inherit; }
   :focus-visible { outline: 2px solid var(--b); outline-offset: 3px; }
   .wrap { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
@@ -122,7 +123,7 @@
   .sec-h a { color: #22c1f1; font-size: 12.5px; text-decoration: none; }
   .thumbs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
   .clip { background: #101722; border: 1px solid #1e293a; border-radius: 11px; overflow: hidden; }
-  .clip svg { display: block; width: 100%; height: auto; aspect-ratio: 16/9; }
+  .clip img { object-fit: cover; display: block; width: 100%; height: auto; aspect-ratio: 16/9; }
   .clip div { padding: 8px 11px 10px; font-size: 12.5px; font-weight: 650; }
   .clip small { display: block; color: #66728a; font-weight: 500; font-size: 11px; }
 
@@ -148,7 +149,7 @@
 
   .gamestrip { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 56px; }
   .gamestrip figure { margin: 0; }
-  .gamestrip svg { display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line-2); aspect-ratio: 16/9; }
+  .gamestrip img { object-fit: cover; display: block; width: 100%; height: auto; border-radius: 14px; border: 1px solid var(--line-2); aspect-ratio: 16/9; }
   .gamestrip figcaption { margin-top: 10px; font-weight: 650; font-size: 14.5px; }
   .gamestrip figcaption small { display: block; color: var(--dim); font-weight: 500; font-size: 13px; }
   .note { color: var(--dim); font-size: 13px; margin-top: 18px; }
@@ -202,106 +203,6 @@
 </head>
 <body>
 
-<!-- Original illustrations of each game's look (scene, camera and HUD layout). Not screenshots, no game artwork or logos. -->
-<svg width="0" height="0" style="position:absolute" aria-hidden="true">
-  <defs>
-    <linearGradient id="rbSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#4aa3f0"/><stop offset="1" stop-color="#bfe3ff"/></linearGradient>
-    <linearGradient id="fnSky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2f8bff"/><stop offset=".7" stop-color="#9fd8ff"/><stop offset="1" stop-color="#e5f5ff"/></linearGradient>
-    <linearGradient id="vaBg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1a2230"/><stop offset="1" stop-color="#0a0d14"/></linearGradient>
-    <radialGradient id="vaGlow" cx=".5" cy=".5" r=".5"><stop offset="0" stop-color="#7ff3e6" stop-opacity=".9"/><stop offset="1" stop-color="#7ff3e6" stop-opacity="0"/></radialGradient>
-    <linearGradient id="rlBlue" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#1b4fd6"/><stop offset="1" stop-color="#0a1a5c"/></linearGradient>
-    <linearGradient id="rlOrange" x1="1" y1="0" x2="0" y2="0"><stop offset="0" stop-color="#f08a1d"/><stop offset="1" stop-color="#6a2a06"/></linearGradient>
-    <linearGradient id="rlField" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#1d6b5c"/><stop offset="1" stop-color="#2f9a7c"/></linearGradient>
-
-    <!-- Roblox: blocky avatar on a studded baseplate, round menu buttons and player list -->
-    <symbol id="g-roblox" viewBox="0 0 320 180">
-      <rect width="320" height="180" fill="url(#rbSky)"/>
-      <g fill="#fff" opacity=".9"><rect x="30" y="26" width="44" height="12" rx="6"/><rect x="48" y="18" width="30" height="12" rx="6"/><rect x="210" y="40" width="54" height="13" rx="6"/><rect x="228" y="31" width="32" height="12" rx="6"/></g>
-      <circle cx="262" cy="30" r="14" fill="#ffe27a" opacity=".9"/>
-      <polygon points="0,104 320,104 320,180 0,180" fill="#4fae45"/>
-      <g stroke="#3d9437" stroke-width="1.2" fill="none" opacity=".8"><path d="M0 118H320M0 136H320M0 160H320"/><path d="M160 104L-40 180M160 104L40 180M160 104L100 180M160 104L160 180M160 104L220 180M160 104L280 180M160 104L360 180"/></g>
-      <g><rect x="206" y="62" width="30" height="42" fill="#e8403a"/><rect x="236" y="76" width="26" height="28" fill="#ffd23f"/><rect x="262" y="88" width="22" height="16" fill="#2f7bf0"/>
-         <rect x="206" y="62" width="30" height="6" fill="#ff6a5f"/><rect x="236" y="76" width="26" height="5" fill="#ffe27a"/><rect x="262" y="88" width="22" height="4" fill="#6aa5ff"/></g>
-      <g><rect x="30" y="80" width="26" height="24" fill="#8f5fd6"/><rect x="30" y="80" width="26" height="5" fill="#b08af0"/><rect x="70" y="92" width="22" height="12" fill="#2fd0c0"/></g>
-      <ellipse cx="150" cy="156" rx="26" ry="5" fill="#000" opacity=".18"/>
-      <g><rect x="136" y="132" width="13" height="24" fill="#a3d27e"/><rect x="151" y="132" width="13" height="24" fill="#a3d27e"/>
-         <rect x="136" y="100" width="28" height="32" fill="#0d69ac"/><rect x="124" y="100" width="12" height="30" fill="#f6c93c"/><rect x="164" y="100" width="12" height="30" fill="#f6c93c"/>
-         <rect x="139" y="78" width="22" height="22" rx="3" fill="#f6c93c"/><circle cx="146" cy="88" r="2" fill="#222"/><circle cx="154" cy="88" r="2" fill="#222"/><path d="M146 94q4 3 8 0" stroke="#222" stroke-width="1.6" fill="none"/></g>
-      <g fill="#000" opacity=".4"><circle cx="18" cy="18" r="11"/><circle cx="44" cy="18" r="11"/></g>
-      <g stroke="#fff" stroke-width="1.8" stroke-linecap="round"><path d="M13 14h10M13 18h10M13 22h10"/><path d="M39 14h10v8h-4l-4 3v-3h-2z" fill="#fff" stroke="none"/></g>
-      <g><rect x="238" y="8" width="74" height="40" rx="5" fill="#000" opacity=".4"/>
-         <rect x="244" y="14" width="42" height="5" rx="2.5" fill="#fff"/><rect x="244" y="25" width="30" height="5" rx="2.5" fill="#fff" opacity=".8"/><rect x="244" y="36" width="36" height="5" rx="2.5" fill="#fff" opacity=".8"/>
-         <g fill="#ffd23f"><rect x="294" y="14" width="12" height="5" rx="2.5"/><rect x="294" y="25" width="9" height="5" rx="2.5"/><rect x="294" y="36" width="11" height="5" rx="2.5"/></g></g>
-    </symbol>
-
-    <!-- Fortnite: low-poly island, third-person builder, hotbar, health and shield, minimap -->
-    <symbol id="g-fortnite" viewBox="0 0 320 180">
-      <rect width="320" height="180" fill="url(#fnSky)"/>
-      <g fill="#fff" opacity=".95"><ellipse cx="70" cy="30" rx="40" ry="9"/><ellipse cx="100" cy="24" rx="24" ry="8"/><ellipse cx="240" cy="44" rx="46" ry="9"/></g>
-      <polygon points="0,98 40,60 78,92 120,50 170,96 215,64 262,100 320,70 320,120 0,120" fill="#6b8fc4"/>
-      <polygon points="0,110 60,92 130,108 210,90 320,106 320,180 0,180" fill="#6fbf4a"/>
-      <polygon points="0,130 90,116 200,126 320,112 320,180 0,180" fill="#58a83c"/>
-      <polygon points="0,150 120,138 240,148 320,138 320,180 0,180" fill="#4a9433"/>
-      <g fill="#2f7a3a"><polygon points="24,96 36,96 30,70"/><polygon points="22,108 38,108 30,82"/><polygon points="268,100 280,100 274,74"/><polygon points="266,112 282,112 274,86"/><polygon points="296,104 306,104 301,82"/></g>
-      <g><rect x="196" y="86" width="52" height="44" fill="#c58a4b"/><rect x="196" y="86" width="52" height="7" fill="#e3a864"/><path d="M196 108h52M222 86v44" stroke="#8d5d2c" stroke-width="2"/>
-         <polygon points="190,86 222,60 254,86" fill="#a1522f"/></g>
-      <ellipse cx="128" cy="156" rx="24" ry="5" fill="#000" opacity=".2"/>
-      <g><rect x="116" y="132" width="10" height="22" rx="3" fill="#2d2f5e"/><rect x="130" y="132" width="10" height="22" rx="3" fill="#2d2f5e"/>
-         <rect x="112" y="96" width="32" height="38" rx="8" fill="#7f4bd8"/><rect x="104" y="100" width="12" height="26" rx="5" fill="#6639b8"/><rect x="140" y="100" width="12" height="26" rx="5" fill="#6639b8"/>
-         <rect x="118" y="100" width="20" height="26" rx="4" fill="#ffb02e"/><circle cx="128" cy="86" r="12" fill="#f2c29a"/><path d="M116 84a12 11 0 0 1 24 0v-3a12 12 0 0 0-24 0z" fill="#3a2a22"/></g>
-      <g transform="translate(262 8)"><rect width="50" height="50" rx="4" fill="#0d2238" opacity=".85" stroke="#9ad0ff" stroke-width="1.2"/><circle cx="26" cy="27" r="19" fill="none" stroke="#a55bff" stroke-width="2"/><circle cx="26" cy="27" r="3" fill="#fff"/><path d="M8 10l10 10M40 40l-8-6" stroke="#6fe08f" stroke-width="2"/></g>
-      <g><rect x="272" y="62" width="40" height="13" rx="3" fill="#000" opacity=".5"/><text x="278" y="72" font-family="Arial Black,Arial" font-weight="900" font-size="9" fill="#fff">12 left</text></g>
-      <g transform="translate(86 150)"><g fill="#0b1b2e" stroke="#fff" stroke-opacity=".5"><rect x="0" width="22" height="22" rx="2"/><rect x="25" width="22" height="22" rx="2" stroke="#ffd23f" stroke-opacity="1" stroke-width="2"/><rect x="50" width="22" height="22" rx="2"/><rect x="75" width="22" height="22" rx="2"/><rect x="100" width="22" height="22" rx="2"/></g>
-        <rect x="6" y="6" width="10" height="10" fill="#7ad7ff"/><rect x="32" y="6" width="10" height="10" fill="#ffb347"/><rect x="57" y="6" width="10" height="10" fill="#c4c4c4"/><rect x="82" y="6" width="10" height="10" fill="#a971ff"/></g>
-      <g transform="translate(8 148)"><rect width="66" height="9" rx="1.5" fill="#000" opacity=".5"/><rect x="1" y="1" width="64" height="7" fill="#6fe08f"/><rect y="12" width="66" height="9" rx="1.5" fill="#000" opacity=".5"/><rect x="1" y="13" width="44" height="7" fill="#46b4ff"/>
-        <text x="70" y="8" font-family="Arial Black,Arial" font-size="8" fill="#fff" font-weight="900">100</text><text x="70" y="20" font-family="Arial Black,Arial" font-size="8" fill="#fff" font-weight="900">70</text></g>
-    </symbol>
-
-    <!-- Valorant: tactical first-person corridor, round score, ability bar, crosshair, killfeed -->
-    <symbol id="g-valorant" viewBox="0 0 320 180">
-      <rect width="320" height="180" fill="url(#vaBg)"/>
-      <polygon points="0,0 120,52 120,128 0,180" fill="#222c3d"/><polygon points="320,0 200,52 200,128 320,180" fill="#1b2433"/>
-      <polygon points="0,180 120,128 200,128 320,180" fill="#2b3548"/><polygon points="0,0 120,52 200,52 320,0" fill="#10151f"/>
-      <rect x="120" y="52" width="80" height="76" fill="#0a0e15"/><ellipse cx="160" cy="92" rx="70" ry="52" fill="url(#vaGlow)" opacity=".5"/><rect x="132" y="66" width="56" height="62" fill="#a6fff2" opacity=".35"/>
-      <g stroke="#3a475f" stroke-width="1.2" opacity=".7"><path d="M0 90L120 90M200 90L320 90M0 130L120 110M200 110L320 130"/></g>
-      <rect x="40" y="70" width="38" height="36" fill="#2b3a52" stroke="#4a5d7c"/><rect x="236" y="76" width="34" height="32" fill="#2b3a52" stroke="#4a5d7c"/>
-      <g stroke="#41ffd0" stroke-width="1.8" stroke-linecap="round"><path d="M160 84v-7M160 100v7M144 92h-7M176 92h7"/></g><circle cx="160" cy="92" r="1.3" fill="#41ffd0"/>
-      <g transform="translate(206 112) rotate(-8)"><path d="M0 40L110 20V46L0 70Z" fill="#12161f"/><path d="M30 38L110 22V30L30 48Z" fill="#3a4152"/><rect x="34" y="12" width="46" height="9" fill="#1a1f2a" transform="rotate(-8 34 12)"/><rect x="60" y="34" width="26" height="22" fill="#d9dbe3" opacity=".12"/></g>
-      <g transform="translate(124 6)"><rect width="72" height="22" fill="#0a0e15" opacity=".88"/><rect width="36" height="22" fill="#1d4d4a" opacity=".8"/><rect x="36" width="36" height="22" fill="#5a2230" opacity=".8"/>
-         <text x="18" y="16" text-anchor="middle" font-family="Arial Black,Arial" font-size="13" fill="#7ff3e6" font-weight="900">7</text><text x="54" y="16" text-anchor="middle" font-family="Arial Black,Arial" font-size="13" fill="#ff5a6e" font-weight="900">5</text>
-         <rect x="24" y="22" width="24" height="9" fill="#0a0e15" opacity=".9"/><text x="36" y="30" text-anchor="middle" font-family="Arial" font-size="8" fill="#fff">1:12</text></g>
-      <g transform="translate(8 8)"><rect width="52" height="52" fill="#0a0e15" opacity=".8" stroke="#3a475f"/><path d="M6 40L26 26L46 10" stroke="#5b6b87" stroke-width="3" fill="none"/><circle cx="26" cy="26" r="3.2" fill="#7ff3e6"/><circle cx="40" cy="14" r="2.6" fill="#ff5a6e"/></g>
-      <g transform="translate(236 8)"><rect width="76" height="14" fill="#0a0e15" opacity=".8"/><rect width="3" height="14" fill="#ff5a6e"/><text x="8" y="10.5" font-family="Arial" font-size="8" fill="#fff" font-weight="700">Vandal  ▸  Enemy</text>
-         <rect y="17" width="76" height="14" fill="#0a0e15" opacity=".8"/><rect y="17" width="3" height="14" fill="#7ff3e6"/><text x="8" y="27.5" font-family="Arial" font-size="8" fill="#fff" font-weight="700">You  ▸  Enemy</text></g>
-      <g transform="translate(8 138)"><text x="0" y="22" font-family="Arial Black,Arial" font-size="26" fill="#fff" font-weight="900">100</text><rect y="28" width="56" height="3" fill="#7ff3e6"/></g>
-      <g transform="translate(108 150)" fill="#0a0e15" stroke="#7ff3e6" stroke-opacity=".6"><circle cx="12" cy="12" r="11"/><circle cx="40" cy="12" r="11"/><circle cx="68" cy="12" r="11"/><circle cx="96" cy="12" r="11" stroke="#ffd23f" stroke-opacity=".9"/></g>
-      <g fill="#7ff3e6" opacity=".9"><circle cx="120" cy="162" r="3"/><circle cx="148" cy="162" r="3"/><circle cx="176" cy="162" r="3"/><path d="M204 156l3 5-3 5-3-5z" fill="#ffd23f"/></g>
-    </symbol>
-
-    <!-- Rocket League: arena, car and ball, scoreboard, boost gauge -->
-    <symbol id="g-rocket" viewBox="0 0 320 180">
-      <rect width="320" height="180" fill="#0b1226"/>
-      <rect width="160" height="120" fill="url(#rlBlue)" opacity=".7"/><rect x="160" width="160" height="120" fill="url(#rlOrange)" opacity=".7"/>
-      <g fill="#fff" opacity=".35"><circle cx="20" cy="30" r="1.2"/><circle cx="60" cy="14" r="1.2"/><circle cx="100" cy="44" r="1.2"/><circle cx="220" cy="20" r="1.2"/><circle cx="270" cy="50" r="1.2"/><circle cx="300" cy="16" r="1.2"/></g>
-      <polygon points="0,180 0,70 60,64 260,64 320,70 320,180" fill="#0d1630"/>
-      <polygon points="40,64 280,64 320,180 0,180" fill="url(#rlField)"/>
-      <g stroke="#fff" stroke-opacity=".55" stroke-width="1.4" fill="none"><path d="M160 64V180"/><ellipse cx="160" cy="132" rx="52" ry="14"/><path d="M0 180L40 64M320 180L280 64"/></g>
-      <g><rect x="118" y="46" width="84" height="22" fill="#08101f" stroke="#e6edf7" stroke-width="2"/><path d="M118 52h84M118 58h84M130 46v22M142 46v22M154 46v22M166 46v22M178 46v22M190 46v22" stroke="#e6edf7" stroke-opacity=".3"/></g>
-      <rect x="112" y="40" width="96" height="6" fill="#f08a1d"/>
-      <g transform="translate(176 96)"><circle r="19" fill="#eaf0f7"/><circle r="19" fill="none" stroke="#9aa9bf" stroke-width="2"/><path d="M-10-6l6-8 9 2 4 9-6 7-9-2z" fill="#aab6c8"/><path d="M-19 4l8 6 2 10M16-10l6 8-3 8" stroke="#aab6c8" stroke-width="2" fill="none"/></g>
-      <path d="M64 152C40 160 20 168 0 174L0 178C26 170 48 164 70 160Z" fill="#37c2ff" opacity=".7"/><path d="M70 150C48 156 28 162 6 168" stroke="#fff" stroke-width="2" opacity=".6" fill="none"/>
-      <g transform="translate(96 130) rotate(-6)"><rect x="0" y="12" width="78" height="22" rx="7" fill="#f08a1d"/><path d="M14 12l12-14h30l14 14z" fill="#d4730f"/><path d="M20 11l9-10h24l11 10z" fill="#263a63"/>
-         <rect x="66" y="16" width="14" height="6" rx="3" fill="#fff4b0"/><rect x="-2" y="28" width="16" height="4" fill="#000" opacity=".35"/>
-         <circle cx="16" cy="34" r="9" fill="#0e131e"/><circle cx="16" cy="34" r="4" fill="#b9c4d6"/><circle cx="62" cy="34" r="9" fill="#0e131e"/><circle cx="62" cy="34" r="4" fill="#b9c4d6"/></g>
-      <g transform="translate(104 6)"><rect width="112" height="24" fill="#071022" opacity=".92"/><rect width="40" height="24" fill="#1b63ff"/><rect x="72" width="40" height="24" fill="#f08a1d"/>
-         <text x="20" y="19" text-anchor="middle" font-family="Arial Black,Arial" font-size="16" fill="#fff" font-weight="900">2</text><text x="92" y="19" text-anchor="middle" font-family="Arial Black,Arial" font-size="16" fill="#fff" font-weight="900">1</text>
-         <text x="56" y="17" text-anchor="middle" font-family="Arial Black,Arial" font-size="12" fill="#fff" font-weight="900">3:12</text></g>
-      <g transform="translate(278 144)"><circle r="26" fill="#071022" opacity=".85"/><circle r="22" fill="none" stroke="#25344f" stroke-width="5"/><path d="M0-22A22 22 0 1 1 -20 9" fill="none" stroke="#ffb02e" stroke-width="5" stroke-linecap="round"/>
-         <text y="7" text-anchor="middle" font-family="Arial Black,Arial" font-size="19" fill="#fff" font-weight="900">67</text></g>
-    </symbol>
-  </defs>
-</svg>
-
 <header>
   <div class="wrap">
     <a class="brand" href="#top"><img src="logo.png" alt="">Rewind</a>
@@ -350,10 +251,10 @@
               </div>
               <div class="sec-h"><span>Recent replays</span><a href="#">See all clips</a></div>
               <div class="thumbs">
-                <div class="clip"><svg viewBox="0 0 320 180"><use href="#g-roblox"/></svg><div>Roblox<small>Today, 6:38 AM · 42 MB</small></div></div>
-                <div class="clip"><svg viewBox="0 0 320 180"><use href="#g-fortnite"/></svg><div>Fortnite<small>Today, 6:37 AM · 38 MB</small></div></div>
-                <div class="clip"><svg viewBox="0 0 320 180"><use href="#g-valorant"/></svg><div>Valorant<small>Today, 6:37 AM · 45 MB</small></div></div>
-                <div class="clip"><svg viewBox="0 0 320 180"><use href="#g-rocket"/></svg><div>Rocket League<small>Today, 6:36 AM · 40 MB</small></div></div>
+                <div class="clip"><img src="game-roblox.jpg" width="960" height="540" loading="lazy" alt="Roblox gameplay"><div>Roblox<small>Today, 6:38 AM · 42 MB</small></div></div>
+                <div class="clip"><img src="game-fortnite.jpg" width="960" height="540" loading="lazy" alt="Fortnite gameplay"><div>Fortnite<small>Today, 6:37 AM · 38 MB</small></div></div>
+                <div class="clip"><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt="Valorant gameplay"><div>Valorant<small>Today, 6:37 AM · 45 MB</small></div></div>
+                <div class="clip"><img src="game-rocket.jpg" width="960" height="540" loading="lazy" alt="Rocket League gameplay"><div>Rocket League<small>Today, 6:36 AM · 40 MB</small></div></div>
               </div>
             </div>
           </div>
@@ -375,12 +276,12 @@
         <div class="card step"><h3>Press <kbd>Alt</kbd> + <kbd>F8</kbd></h3><p>You hear a short chime and the clip is saved to <code>Videos\Rewind</code>, named after the game.</p></div>
       </div>
       <div class="gamestrip" aria-label="Examples of clips Rewind names after the game">
-        <figure><svg viewBox="0 0 320 180" role="img" aria-label="Illustration of a blocky Roblox-style obby with a character on a baseplate"><use href="#g-roblox"/></svg><figcaption>Roblox<small>Obbies and tycoons</small></figcaption></figure>
-        <figure><svg viewBox="0 0 320 180" role="img" aria-label="Illustration of a Fortnite-style island, third-person builder, hotbar and minimap"><use href="#g-fortnite"/></svg><figcaption>Fortnite<small>Final circles</small></figcaption></figure>
-        <figure><svg viewBox="0 0 320 180" role="img" aria-label="Illustration of a Valorant-style first-person corridor with crosshair, abilities and round score"><use href="#g-valorant"/></svg><figcaption>Valorant<small>Clutches and aces</small></figcaption></figure>
-        <figure><svg viewBox="0 0 320 180" role="img" aria-label="Illustration of a Rocket League-style arena with a car, ball, scoreboard and boost gauge"><use href="#g-rocket"/></svg><figcaption>Rocket League<small>Last-second goals</small></figcaption></figure>
+        <figure><img src="game-roblox.jpg" width="960" height="540" loading="lazy" alt="Roblox gameplay"><figcaption>Roblox<small>Obbies and tycoons</small></figcaption></figure>
+        <figure><img src="game-fortnite.jpg" width="960" height="540" loading="lazy" alt="Fortnite gameplay"><figcaption>Fortnite<small>Final circles</small></figcaption></figure>
+        <figure><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt="Valorant gameplay"><figcaption>Valorant<small>Clutches and aces</small></figcaption></figure>
+        <figure><img src="game-rocket.jpg" width="960" height="540" loading="lazy" alt="Rocket League gameplay"><figcaption>Rocket League<small>Last-second goals</small></figcaption></figure>
       </div>
-      <p class="note">Scenes are illustrations of each game's look, not screenshots. Game names belong to their owners, and Rewind isn't affiliated with them. It works with almost any PC game.</p>
+      <p class="note">Game names and footage belong to their owners, and Rewind isn't affiliated with them. It works with almost any PC game.</p>
     </div>
   </section>
 
