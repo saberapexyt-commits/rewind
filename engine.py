@@ -102,18 +102,44 @@ ENCODERS = {
 QUALITY = {"small": 30, "balanced": 25, "best": 20}
 
 
-def probe_encoders():
+PROBE_NOTES = {}
+
+
+def _probe_one(key, codec):
+    """Try a few ways of starting an encoder. Returns True/False and records ffmpeg's reason."""
+    base = [FFMPEG, "-hide_banner", "-v", "error"]
+    src = ["-f", "lavfi", "-i", "color=black:s=1280x720:d=0.4:r=30"]
+    tries = [src + ["-pix_fmt", "nv12", "-c:v", codec, "-f", "null", "-"],
+             src + ["-pix_fmt", "yuv420p", "-c:v", codec, "-f", "null", "-"]]
+    if key == "intel":
+        tries.append(["-init_hw_device", "qsv=hw", "-filter_hw_device", "hw"] + src +
+                     ["-vf", "format=nv12,hwupload=extra_hw_frames=64,format=qsv", "-c:v", codec, "-f", "null", "-"])
+    elif key == "amd":
+        tries.append(src + ["-pix_fmt", "nv12", "-c:v", codec, "-usage", "lowlatency", "-f", "null", "-"])
+    last = first = ""
+    for args in tries:
+        try:
+            r = run(base + args, timeout=30)
+        except Exception as e:
+            last = str(e)
+            continue
+        if r.returncode == 0:
+            PROBE_NOTES[key] = ""
+            return True
+        if not first:
+            first = (r.stderr.strip().splitlines() or [f"exit {r.returncode}"])[-1]
+    PROBE_NOTES[key] = first or last
+    return False
+
+
+def probe_encoders(log=lambda m: None):
     ok = {}
     for key, (codec, _) in ENCODERS.items():
         if key == "cpu" or TEST:
             ok[key] = key == "cpu"
             continue
-        try:
-            r = run([FFMPEG, "-hide_banner", "-v", "error", "-f", "lavfi", "-i", "color=black:s=640x360:d=0.3",
-                     "-pix_fmt", "nv12", "-c:v", codec, "-f", "null", "-"], timeout=25)
-            ok[key] = r.returncode == 0
-        except Exception:
-            ok[key] = False
+        ok[key] = _probe_one(key, codec)
+        log(f"encoder {key} ({codec}): {'works' if ok[key] else 'not available: ' + PROBE_NOTES.get(key, '')}")
     return ok
 
 
@@ -293,18 +319,28 @@ def soft_limit(x, knee=0.85):
 class WasapiCapture(Capture):
     def __init__(self, pa_mod, pa, info, gain=1.0):
         super().__init__(gain)
-        ch = max(1, min(int(info["maxInputChannels"]), 8))
-        rate = int(info["defaultSampleRate"])
-        resample = Resampler(rate)
+        reported = max(1, min(int(info["maxInputChannels"]), 8))
+        rate0 = int(info["defaultSampleRate"])
+        last = None
+        # some devices (virtual mixers, spatial audio, headsets) report more channels than Windows will open
+        # in shared mode, so try the likely ones until one works
+        for ch in dict.fromkeys([reported, 2, 1, 6, 8, 4]):
+            for rate in dict.fromkeys([rate0, 48000, 44100]):
+                resample = Resampler(rate)
 
-        def cb(data, frames, t, status):
-            self.push(resample(to_stereo(data, ch)))
-            return (None, pa_mod.paContinue)
+                def cb(data, frames, t, status, ch=ch, resample=resample):
+                    self.push(resample(to_stereo(data, ch)))
+                    return (None, pa_mod.paContinue)
 
-        self.stream = pa.open(format=pa_mod.paInt16, channels=ch, rate=rate, input=True,
-                              input_device_index=info["index"], frames_per_buffer=int(rate / 50),
-                              stream_callback=cb)
-        self.stream.start_stream()
+                try:
+                    self.stream = pa.open(format=pa_mod.paInt16, channels=ch, rate=rate, input=True,
+                                          input_device_index=info["index"], frames_per_buffer=int(rate / 50),
+                                          stream_callback=cb)
+                    self.stream.start_stream()
+                    return
+                except Exception as e:
+                    last = e
+        raise last or RuntimeError("couldn't open the device")
 
     def close(self):
         try:
@@ -569,6 +605,7 @@ class Recorder:
         self.fails = 0
         self.has_audio = False
         self.auto_gdi = False
+        self.audio_note = ""
         self.capture_mode = "dda"
         self.long = None
         self.persist = lambda key, value: None      # the app saves a working capture method here
@@ -614,7 +651,7 @@ class Recorder:
         self.capture_kind = "window" if self.window_target else "screen"
         self.dark_streak = 0
         if not self.available:
-            self.available = probe_encoders()
+            self.available = probe_encoders(self.log)
         self.encoder = pick_encoder(s["encoder"], self.available)
         if self.fails >= 3 and self.encoder != "cpu":  # GPU path keeps failing: fall back
             self.log(f"{self.encoder} failed twice, falling back to CPU")
@@ -626,6 +663,7 @@ class Recorder:
         wrap = math.ceil(length / SEG) + 4
         want_audio = bool(s["desktop_audio"] or s["mic"])
         self.has_audio = False
+        self.audio_note = ""
         if want_audio and not TEST:
             try:
                 import pyaudiowpatch  # noqa: F401
@@ -680,7 +718,8 @@ class Recorder:
                     self.notice = self.pump.mic_error
             except Exception as e:
                 self.pump = None
-                self._set_error(f"Couldn't open audio: {e}")
+                self.audio_note = f"Couldn't open audio, so Rewind is recording video only: {e}"
+                self.log(self.audio_note)
                 # keep ffmpeg fed with silence so video still records
                 self.pump = AudioPump(self.proc.stdin.write, False, False, None, on_error=self._set_error)
                 self.pump.start()
@@ -824,10 +863,17 @@ class Recorder:
         while True:
             time.sleep(1.5)
             with self.lock:
-                if self.wanted and self.proc and self.proc.poll() is not None:
-                    tail = [l for l in self.stderr_tail if "rror" in l or "ailed" in l] or list(self.stderr_tail)
+                # ffmpeg can also sit there alive but silent (a capture method that never produces a frame)
+                stalled = (self.wanted and self.proc and self.proc.poll() is None and not self.order and self.state == "buffering"
+                           and time.monotonic() - self.started_at > 14 and not TEST)
+                if stalled:
+                    self.stderr_tail.append("ffmpeg started but no video came out in 14 seconds")
+                    self._kill()
+                if self.wanted and (stalled or (self.proc and self.proc.poll() is not None)):
+                    tail = [l for l in self.stderr_tail if "rror" in l or "ailed" in l or "no video" in l] or list(self.stderr_tail)
                     self.fails += 1
-                    self._set_error("Capture stopped: " + (tail[-1] if tail else f"ffmpeg exited ({self.proc.returncode})"))
+                    self.log("ffmpeg output: " + " | ".join(list(self.stderr_tail)[-8:]))
+                    self._set_error("Capture stopped: " + (tail[-1] if tail else "ffmpeg exited"))
                     if self.fails == 2 and self.input_mode() == "dda" and self.settings.get("capture_input", "") == "" and not self.window_target:
                         self.auto_gdi = True
                         self.notice = "The fast screen capture didn't work on this PC, so Rewind is trying compatibility capture."
@@ -863,6 +909,7 @@ class Recorder:
             "last_saved": self.last_saved,
             "capture": self.capture_kind,
             "capture_mode": self.capture_mode,
+            "audio_note": self.audio_note,
             "capture_label": f"{self.window_target['name']} window" if self.window_target else "Whole screen",
             "window_capture": window_capture_supported(),
             "notice": self.notice,

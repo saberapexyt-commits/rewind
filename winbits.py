@@ -101,6 +101,10 @@ def monitors():
     if not IS_WIN:
         return [{"index": 0, "label": "Display 1 (1920×1080)"}]
     out = []
+    try:  # report real pixels even on scaled (125%, 150%) displays
+        ctypes.windll.shcore.SetProcessDpiAwareness(2)
+    except Exception:
+        pass
 
     class RECT(ctypes.Structure):
         _fields_ = [("l", ctypes.c_long), ("t", ctypes.c_long), ("r", ctypes.c_long), ("b", ctypes.c_long)]

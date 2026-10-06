@@ -447,6 +447,16 @@
       <h2>What's new</h2>
       <p class="intro">Every release, newest first.</p>
       <div class="rel">
+        <h3>Rewind 1.4.2</h3><time>October 6, 2026</time>
+        <ul>
+          <li><b>Fixes "Couldn't open audio: Invalid number of channels".</b> Rewind tries the channel counts and sample rates a sound device will really accept, so game sound and the mic open on headsets, virtual mixers and spatial-audio setups. If audio still can't open, it records video only and says so.</li>
+          <li>Recording that starts but never fills the buffer is spotted after 14 seconds and retried with the next capture method.</li>
+          <li><b>Better AMD and Intel detection.</b> More ways to start each graphics encoder, and Settings shows which graphics cards Windows found and why an encoder isn't available.</li>
+          <li>Compatibility capture uses real screen pixels on scaled displays.</li>
+          <li>New <b>Copy report</b> button in Settings for sharing what's going wrong.</li>
+        </ul>
+      </div>
+      <div class="rel">
         <h3>Rewind 1.4.1</h3><time>October 6, 2026</time>
         <ul>
           <li><b>Fixes "Capture stopped: Error opening input files: Invalid argument".</b> If the fast screen capture can't start on a PC (some laptops, hybrid graphics, drivers that refuse it), Rewind now switches by itself to compatibility capture and remembers it. You can choose the method in Settings under Video.</li>

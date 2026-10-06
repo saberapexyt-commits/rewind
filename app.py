@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.4.1"
+VERSION = "1.4.2"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -115,6 +115,7 @@ class App:
         self.ext_files = {}   # audio files picked in the editor: id -> path
         self.jobs = {}        # editor exports in progress
         self.sound_urls = set()   # online sounds the library search returned
+        self.gpus = []
         self._durations = {}
 
     def check_update(self, manual=False):
@@ -379,7 +380,35 @@ class App:
             "clip_count": len(self.clip_files()),
             "native_window": self.window is not None,
             "website": WEBSITE, "update": self.update, "update_status": self.update_status,
+            "gpus": self.gpus, "encoder_notes": engine.PROBE_NOTES,
         }
+
+    def find_gpus(self):
+        try:
+            r = subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
+                                "Get-CimInstance Win32_VideoController | ForEach-Object { $_.Name + ' | driver ' + $_.DriverVersion }"],
+                               capture_output=True, text=True, timeout=25, creationflags=0x08000000, stdin=subprocess.DEVNULL)
+            self.gpus = [l.strip() for l in r.stdout.splitlines() if l.strip()]
+        except Exception as e:
+            log(f"gpu lookup failed: {e}")
+
+    def diagnostics(self):
+        import platform
+        st = self.rec.status()
+        lines = [f"Rewind {VERSION}", f"Windows {platform.version()}", "Graphics: " + (" ; ".join(self.gpus) or "unknown"),
+                 f"ffmpeg: {engine.FFMPEG}", "Encoders: " + ", ".join(f"{k}={'yes' if v else 'no'}" for k, v in (st.get("available") or {}).items()),
+                 "Using encoder: " + str(st.get("encoder")), "Capture: " + str(st.get("capture_mode")) + f" (setting: {self.settings.get('capture_input') or 'automatic'})",
+                 "State: " + str(st.get("state")), "Error: " + str(st.get("error") or "none"), "Audio: " + str(st.get("audio_note") or "ok"),
+                 "Notice: " + str(st.get("notice") or "none")]
+        for k, v in engine.PROBE_NOTES.items():
+            if v:
+                lines.append(f"Why {k} isn't available: {v}")
+        try:
+            tail = LOG_FILE.read_text(encoding="utf-8", errors="replace").splitlines()[-25:]
+            lines += ["", "Recent log:"] + [t[:300] for t in tail]
+        except Exception:
+            pass
+        return "\n".join(lines)
 
     def clip_files(self):
         d = Path(self.settings["clips_dir"])
@@ -895,6 +924,9 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/editor/cancel":
                 APP.cancel_export(body.get("id", ""))
                 return self._send(200, {"ok": True})
+            if path == "/api/diagnostics":
+                text = APP.diagnostics()
+                return self._send(200, {"ok": share.copy_text_to_clipboard(text), "text": text})
             if path == "/api/open-log":
                 winbits.reveal(LOG_FILE)
                 return self._send(200, {"ok": True})
@@ -1072,6 +1104,7 @@ def main():
                 APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
         threading.Thread(target=first_run_setup, daemon=True).start()
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
+    threading.Thread(target=APP.find_gpus, daemon=True).start()
     threading.Thread(target=APP.update_loop, daemon=True).start()
     APP.start_tray()
     hidden = APP.settings.get("start_hidden") or "--hidden" in sys.argv

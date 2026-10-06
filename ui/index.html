@@ -605,6 +605,7 @@
       <div class="sect">Video</div>
       <p class="sect-note">Changing these restarts the buffer.</p>
       <div class="gpu-line" id="gpuline"><i></i><div><b id="gpu-title">Checking your graphics card…</b><small id="gpu-sub"></small></div></div>
+      <p class="sect-note" id="gpu-found" style="margin:-6px 0 12px"></p>
       <div class="set">
         <div class="lbl"><b>Encoder</b><small>The graphics card encodes with almost no effect on your game.</small></div>
         <div class="seg" id="seg-encoder"></div>
@@ -675,8 +676,8 @@
         <label class="switch"><input type="checkbox" id="opt-tray"><span></span></label>
       </div>
       <div class="set">
-        <div class="lbl"><b>Something not working?</b><small>Opens the log file. Send it to whoever is helping you.</small></div>
-        <button class="btn" id="openlog">Show log file</button>
+        <div class="lbl"><b>Something not working?</b><small id="diag-note">Copies a short report (your graphics card, what Rewind tried, recent errors) to paste to whoever is helping you.</small></div>
+        <div style="display:flex;gap:8px"><button class="btn primary" id="copydiag">Copy report</button><button class="btn" id="openlog">Show log file</button></div>
       </div>
       <div class="set">
         <div class="lbl"><b>Start hidden in the tray</b><small>Useful with a startup shortcut.</small></div>
@@ -865,7 +866,7 @@ function render() {
   const g = S.game;
   $("gamechip").className = "chip" + (g ? (g.focused ? " live" : " away") : "");
   $("gametext").textContent = g ? (g.focused ? `Playing ${g.name}` : `${g.name} (in the background)`) : "No game detected";
-  $("notice").textContent = st.notice || "";
+  $("notice").textContent = [st.notice, st.audio_note].filter(Boolean).join("  ");
 
   const rec = state === "buffering" || state === "saving";
   $("pill").querySelector("span").textContent = state === "buffering" ? (g && g.focused ? `Recording ${g.name}` : "Recording")
@@ -1425,6 +1426,8 @@ function renderUpdates() {
 function renderSettings() {
   if (!S) return;
   const s = S.settings, st = S.status, av = st.available || {};
+  $("gpu-found").textContent = (S.gpus && S.gpus.length ? "Windows found: " + S.gpus.map((g) => g.split(" | ")[0]).join(", ") + ". " : "")
+    + Object.entries(S.encoder_notes || {}).filter(([, v]) => v).map(([k, v]) => `${{ nvidia: "NVIDIA", amd: "AMD", intel: "Intel" }[k] || k} encoder not available (${v.slice(0, 90)}).`).join(" ");
   seg("seg-capin", [["", "Automatic"], ["dda", "Fast"], ["gdi", "Compatible"]], s.capture_input || "", "capture_input");
   $("cap-in-note").textContent = st.capture_mode === "gdi" ? "Using compatibility capture. It works on every PC but is a little heavier. Pick Fast to try the quick method again."
     : "Automatic uses the fast method and switches by itself if your PC can't.";
@@ -1498,6 +1501,7 @@ function nameFor(exe) {
 async function poll1() { S = await get("/api/state"); render(); }
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
 $("openlog").onclick = () => api("/api/open-log");
+$("copydiag").onclick = async () => { const r = await api("/api/diagnostics"); $("diag-note").textContent = r.ok ? "Copied. Paste it into your message." : "Couldn't copy. Use Show log file instead."; };
 $("pickfolder").onclick = () => api("/api/pick-folder").then(() => loadClips());
 
 /* ---------- hotkeys: clip, long recording, bookmark */
