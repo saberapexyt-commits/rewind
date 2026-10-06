@@ -505,6 +505,14 @@ class AudioPump(threading.Thread):
                 n = int((time.monotonic() - t0) * RATE) - written
                 if n <= 0:
                     continue
+                if n > RATE:
+                    # The PC slept, or this thread was frozen for a while. Writing the whole gap as silence is what
+                    # once put hours of audio into a short clip, so skip it and carry on in real time.
+                    written += n - RATE // 50
+                    for s in self.sources:
+                        with s.lock:
+                            s.q.clear(); s.n = 0
+                    continue
                 mix = np.zeros((n, 2), np.float32)
                 for s in self.sources:
                     mix += s.take(n)
@@ -613,9 +621,13 @@ class LongRecording:
                      "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=7200)
             if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
                 raise RuntimeError("Couldn't join the recording: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
-            os.replace(part, final)
+            seal(part, final, self.elapsed() + 60, self.log)
         finally:
             shutil.rmtree(self.dir, ignore_errors=True)
+            try:
+                part.unlink()
+            except (OSError, UnboundLocalError):
+                pass
         return self.bookmarks
 
     def discard(self):
@@ -1014,7 +1026,7 @@ class Recorder:
                      "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=300)
             if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
                 raise RuntimeError("Couldn't save the clip: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
-            os.replace(part, final)
+            seal(part, final, length + 4 * SEG + 10, self.log)
         finally:
             shutil.rmtree(work, ignore_errors=True)
             if part.exists():
@@ -1042,6 +1054,123 @@ def keyframe_at_or_before(path, t):
         if "K" in (parts[1] if len(parts) > 1 else "") and pts <= t:
             best = max(best, pts)
     return best
+
+
+def clip_problem(path, max_len=None):
+    """None when the file is sound, otherwise a short reason. A clip that fails this is never kept."""
+    try:
+        r = run([FFPROBE, "-v", "error", "-show_entries", "format=duration:stream=codec_type,duration", "-of", "json", str(path)], timeout=120)
+        info = json.loads(r.stdout or "{}")
+    except Exception:
+        return "can't be read"
+    if r.returncode != 0 or not info.get("streams"):
+        return "can't be read"
+
+    def dur(kind):
+        out = []
+        for s in info["streams"]:
+            if s.get("codec_type") == kind:
+                try:
+                    out.append(float(s.get("duration")))
+                except (TypeError, ValueError):
+                    pass
+        return out
+    v, a = dur("video"), dur("audio")
+    try:
+        fmt = float(info.get("format", {}).get("duration") or 0)
+    except ValueError:
+        fmt = 0.0
+    if not v or v[0] <= 0:
+        return "has no picture"
+    if a and abs(a[0] - v[0]) > 3:
+        return f"sound is {a[0]:.0f}s but picture is {v[0]:.0f}s"
+    if max_len and fmt > max_len:
+        return f"is {fmt:.0f}s long, expected at most {max_len:.0f}s"
+    return None
+
+
+def repair_clip(path):
+    """Cut sound that runs past the picture. True when the file was fixed (or already fine)."""
+    path = Path(path)
+    if clip_problem(path) is None:
+        return True
+    r = run([FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "csv=p=0", str(path)], timeout=120)
+    try:
+        vdur = float(r.stdout.strip())
+    except ValueError:
+        return False
+    part = path.with_name(path.stem + ".repair.part")
+    try:
+        r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", str(path), "-map", "0:v:0", "-map", "0:a:0?", "-t", f"{vdur:.3f}",
+                 "-c", "copy", "-f", "mp4", str(part)], timeout=900)
+        if r.returncode == 0 and part.exists() and part.stat().st_size > 1000 and clip_problem(part) is None:
+            os.replace(part, path)
+            return True
+        return False
+    finally:
+        try:
+            part.unlink()
+        except OSError:
+            pass
+
+
+def seal(part, final, max_len=None, log=print):
+    """Turn a finished .part file into the real clip, but only if it checks out. A bad file is fixed if it can
+    be, and otherwise deleted, so a broken clip never appears in the library."""
+    part, final = Path(part), Path(final)
+    why = clip_problem(part, max_len)
+    if why:
+        log(f"clip check failed ({why}), trying to repair")
+        fixed = part.with_name(part.stem + ".fixed.part")
+        ok = False
+        try:
+            r = run([FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=duration", "-of", "csv=p=0", str(part)], timeout=120)
+            vdur = float(r.stdout.strip())
+            r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-i", str(part), "-map", "0:v:0", "-map", "0:a:0?", "-t", f"{vdur:.3f}",
+                     "-c", "copy", "-f", "mp4", str(fixed)], timeout=900)
+            ok = r.returncode == 0 and fixed.exists() and clip_problem(fixed, max_len) is None
+        except Exception:
+            ok = False
+        if not ok:
+            for f in (fixed, part):
+                try:
+                    f.unlink()
+                except OSError:
+                    pass
+            raise RuntimeError(f"The clip came out damaged ({why}), so it wasn't kept. Nothing was lost from the buffer.")
+        os.replace(fixed, part)
+    os.replace(part, final)
+
+
+def clean_stale_parts(folder):
+    """Half-written files left behind by a crash or a power cut."""
+    try:
+        for f in Path(folder).rglob("*.part"):
+            try:
+                if time.time() - f.stat().st_mtime > 120:
+                    f.unlink()
+            except OSError:
+                pass
+    except OSError:
+        pass
+
+
+def repair_library(folder, log=print):
+    """Fix older clips whose sound runs past their picture."""
+    fixed = 0
+    try:
+        files = [f for f in Path(folder).rglob("*.mp4") if not f.name.endswith(".part") and time.time() - f.stat().st_mtime > 30]
+    except OSError:
+        return 0
+    for f in files:
+        try:
+            if clip_problem(f) and repair_clip(f):
+                make_thumb(f)
+                log(f"repaired {f.name}")
+                fixed += 1
+        except Exception as e:
+            log(f"couldn't check {f.name}: {e}")
+    return fixed
 
 
 def thumb_path(video):

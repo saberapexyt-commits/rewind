@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.4
+
+- **Fixes clips with hours of sound and a broken timeline.** If the PC went to sleep (or Rewind was frozen for a while), the sound pipe could write the whole gap into the buffer, so the next clip came out hundreds of MB with a 140 minute timeline and a black strip. Rewind now skips that gap and keeps recording in real time.
+- **No damaged clip is ever kept.** Every saved clip, long recording, cut and edit export is checked before it appears in your library: it has to open, have a picture, and its sound has to match its picture. A clip that fails is repaired if possible and otherwise thrown away, never saved half-broken.
+- **Old damaged clips repair themselves.** When Rewind starts it fixes clips whose sound runs past the picture and clears out half-written files.
+
 ## 1.5.3
 
 - **Your edit is saved automatically.** The editor keeps your project (clips, tracks, effects, text, sounds and the name) on your PC after every change, so it's still there after closing Rewind or installing an update. Open **Editor** in the sidebar to carry on.

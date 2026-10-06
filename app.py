@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.3"
+VERSION = "1.5.4"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -494,6 +494,11 @@ class App:
             if r.returncode != 0 or not tmp.exists() or tmp.stat().st_size < 1000:
                 log(f"trim failed: {r.stderr[-300:]}")
                 return {"ok": False, "error": "Couldn't cut that clip. See rewind.log for details."}
+            why = engine.clip_problem(tmp, end - start + 5)
+            if why:
+                log(f"trim result rejected ({why})")
+                tmp.unlink(missing_ok=True)
+                return {"ok": False, "error": "The cut came out damaged, so nothing was changed. Your original is safe."}
             if b.get("mode") == "replace" and not fmt:
                 st = src.stat()
                 for i in range(10):  # the player may still be letting go of the file
@@ -1165,6 +1170,13 @@ def main():
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
     threading.Thread(target=APP.find_gpus, daemon=True).start()
     threading.Thread(target=APP.update_loop, daemon=True).start()
+    def tidy_clips():
+        folder = APP.settings["clips_dir"]
+        engine.clean_stale_parts(folder)
+        n = engine.repair_library(folder, log)
+        if n:
+            log(f"repaired {n} clip(s)")
+    threading.Thread(target=tidy_clips, daemon=True).start()
     APP.start_tray()
     hidden = APP.settings.get("start_hidden") or "--hidden" in sys.argv
     if os.environ.get("REWIND_HEADLESS") == "1":

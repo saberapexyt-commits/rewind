@@ -479,7 +479,12 @@ def run_job(job, project, resolve, out_path, enc_for, height_cap, log=print):
             job.proc.wait()
             if job.cancelled:
                 raise EditorError("Cancelled.")
+            bad = None
             if job.proc.returncode == 0 and part.exists() and part.stat().st_size > 1000:
+                bad = engine.clip_problem(part, total + 5)
+                if bad:
+                    errs.append(f"The finished video didn't pass the check ({bad}).")
+            if job.proc.returncode == 0 and part.exists() and part.stat().st_size > 1000 and not bad:
                 os.replace(part, out_path)
                 job.pct, job.done, job.name = 100.0, True, str(out_path)
                 return
