@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.4.2"
+VERSION = "1.4.3"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -1088,20 +1088,32 @@ def main():
         else:
             APP.rec.start()
 
-    if engine.have_ffmpeg():
+    def ffmpeg_urls():
+        urls = [engine.FFMPEG_URL]
+        if REPO:
+            urls.insert(0, f"https://github.com/{REPO}/releases/download/{engine.FFMPEG_TAG}/ffmpeg-win64.zip")
+        return list(dict.fromkeys(urls))
+
+    if engine.have_ffmpeg() and not engine.needs_pinned():
         begin_buffer()
     else:
         def first_run_setup():
+            had = engine.have_ffmpeg()
             APP.rec.state = "starting"
             try:
-                log("ffmpeg missing, downloading")
-                engine.download_ffmpeg(lambda p: setattr(APP.rec, "notice", f"First run: downloading video tools ({p}%). Rewind starts by itself when it's done."))
+                log("downloading the pinned ffmpeg" if not had else "switching to the pinned ffmpeg")
+                word = "Updating" if had else "First run: downloading"
+                engine.download_ffmpeg(lambda p: setattr(APP.rec, "notice", f"{word} video tools ({p}%). Rewind starts by itself when it's done."), ffmpeg_urls())
                 APP.rec.notice = ""
                 begin_buffer()
             except Exception as e:
                 log(f"ffmpeg download failed: {e}")
-                APP.rec.state = "error"
-                APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
+                APP.rec.notice = ""
+                if had:                      # keep recording with what's already there
+                    begin_buffer()
+                else:
+                    APP.rec.state = "error"
+                    APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
         threading.Thread(target=first_run_setup, daemon=True).start()
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
     threading.Thread(target=APP.find_gpus, daemon=True).start()

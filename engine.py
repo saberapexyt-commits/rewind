@@ -33,7 +33,12 @@ APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path
 
 
 BIN_DIR = Path(os.environ.get("APPDATA", Path.home() / ".config")) / "Rewind" / "bin"
-FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+# The exact ffmpeg build Rewind is tested with. It is mirrored on Rewind's own GitHub release and checked against this
+# SHA-256, so a newer ffmpeg (or a changed download page) can never break an install.
+FFMPEG_BUILD = "N-125875-g5d4d3bdc61"
+FFMPEG_TAG = "ffmpeg-n125875"
+FFMPEG_SHA256 = "36c73f5526793f3d4fe06846cfbd42d34d9a6c117afe10f2056cfd8d35a05b64"
+FFMPEG_URL = f"https://github.com/saberapexyt-commits/rewind/releases/download/{FFMPEG_TAG}/ffmpeg-win64.zip"
 
 
 def ffbin(name):
@@ -46,35 +51,80 @@ def ffbin(name):
 FFMPEG, FFPROBE = ffbin("ffmpeg"), ffbin("ffprobe")
 
 
+_queue_ok = {}
+
+
+def input_queue_args():
+    """-thread_queue_size 1024 for the audio pipe, but only if this ffmpeg still accepts it on an input.
+
+    Some newer builds treat it as an output-only option and refuse to start with 'Invalid argument'."""
+    if TEST:
+        return ["-thread_queue_size", "1024"]
+    if FFMPEG not in _queue_ok:
+        try:
+            r = subprocess.run([FFMPEG, "-hide_banner", "-v", "error", "-thread_queue_size", "64", "-f", "s16le", "-ar", "48000", "-ac", "2",
+                                "-i", "pipe:0", "-t", "0.05", "-f", "null", "-"], input=b"\0" * 40000, capture_output=True,
+                               timeout=20, creationflags=NO_WINDOW)
+            _queue_ok[FFMPEG] = r.returncode == 0
+        except Exception:
+            _queue_ok[FFMPEG] = False
+    return ["-thread_queue_size", "1024"] if _queue_ok[FFMPEG] else []
+
+
 def have_ffmpeg():
     return TEST or (Path(FFMPEG).exists() and Path(FFPROBE).exists()) or bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
 
 
-def download_ffmpeg(progress=lambda pct: None):
-    """First run of the single-file exe: fetch ffmpeg + ffprobe into the Rewind data folder (APPDATA, Rewind, bin)."""
+def needs_pinned():
+    """True when the ffmpeg Rewind downloaded earlier isn't the pinned build (it was fetched from a moving download)."""
+    try:
+        if Path(FFMPEG).resolve().parent != BIN_DIR.resolve():
+            return False                 # the user's own ffmpeg, or one next to the exe: leave it alone
+        return (BIN_DIR / "ffmpeg.build").read_text().strip() != FFMPEG_BUILD
+    except Exception:
+        return True
+
+
+def download_ffmpeg(progress=lambda pct: None, urls=None):
+    """Fetch the pinned ffmpeg + ffprobe into the Rewind data folder, checking the SHA-256 before using anything."""
     global FFMPEG, FFPROBE
+    import hashlib
     import urllib.request
     import zipfile
     BIN_DIR.mkdir(parents=True, exist_ok=True)
     tmp = BIN_DIR / "ffmpeg.zip.part"
-    req = urllib.request.Request(FFMPEG_URL, headers={"User-Agent": "Rewind"})
-    with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
-        total, got = int(r.headers.get("Content-Length") or 0), 0
-        while True:
-            chunk = r.read(1 << 20)
-            if not chunk:
-                break
-            f.write(chunk)
-            got += len(chunk)
-            if total:
-                progress(int(got * 100 / total))
+    last = None
+    for url in (urls or [FFMPEG_URL]):
+        try:
+            h = hashlib.sha256()
+            req = urllib.request.Request(url, headers={"User-Agent": "Rewind"})
+            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+                total, got = int(r.headers.get("Content-Length") or 0), 0
+                while True:
+                    chunk = r.read(1 << 20)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    h.update(chunk)
+                    got += len(chunk)
+                    if total:
+                        progress(int(got * 100 / total))
+            if h.hexdigest() != FFMPEG_SHA256:
+                raise RuntimeError("The video tools download didn't match what Rewind expects, so it was thrown away.")
+            break
+        except Exception as e:
+            last = e
+            tmp.unlink(missing_ok=True)
+    else:
+        raise last or RuntimeError("Couldn't download the video tools.")
     with zipfile.ZipFile(tmp) as z:
         for name in ("ffmpeg.exe", "ffprobe.exe"):
-            member = next(n for n in z.namelist() if n.endswith("/bin/" + name))
-            with z.open(member) as src, open(BIN_DIR / (name + ".part"), "wb") as dst:
+            with z.open(name) as src, open(BIN_DIR / (name + ".part"), "wb") as dst:
                 shutil.copyfileobj(src, dst)
-            (BIN_DIR / (name + ".part")).replace(BIN_DIR / name)
-    tmp.unlink()
+    for name in ("ffmpeg.exe", "ffprobe.exe"):
+        (BIN_DIR / (name + ".part")).replace(BIN_DIR / name)
+    (BIN_DIR / "ffmpeg.build").write_text(FFMPEG_BUILD)
+    tmp.unlink(missing_ok=True)
     FFMPEG, FFPROBE = ffbin("ffmpeg"), ffbin("ffprobe")
 
 
@@ -695,7 +745,7 @@ class Recorder:
         else:
             cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target)]
         if self.has_audio:
-            cmd += ["-thread_queue_size", "1024", "-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
+            cmd += input_queue_args() + ["-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
         cmd += ["-map", "0:v"] + (["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if self.has_audio else [])
         cmd += video_args(self.encoder, s["quality"], fps)
         cmd += ["-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(wrap),

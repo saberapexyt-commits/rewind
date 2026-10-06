@@ -447,6 +447,13 @@
       <h2>What's new</h2>
       <p class="intro">Every release, newest first.</p>
       <div class="rel">
+        <h3>Rewind 1.4.3</h3><time>October 6, 2026</time>
+        <ul>
+          <li><b>Real fix for "Capture stopped: Error opening input files: Invalid argument".</b> A newer ffmpeg that Rewind had downloaded no longer accepts one option Rewind used for game sound. Rewind now checks what the ffmpeg in use accepts, so it works with old and new builds.</li>
+          <li><b>One pinned, tested ffmpeg.</b> Rewind checks it with a SHA-256 before using it, instead of always downloading the newest, so a newer ffmpeg can't break an install. PCs that already downloaded one switch the next time Rewind starts.</li>
+        </ul>
+      </div>
+      <div class="rel">
         <h3>Rewind 1.4.2</h3><time>October 6, 2026</time>
         <ul>
           <li><b>Fixes "Couldn't open audio: Invalid number of channels".</b> Rewind tries the channel counts and sample rates a sound device will really accept, so game sound and the mic open on headsets, virtual mixers and spatial-audio setups. If audio still can't open, it records video only and says so.</li>
