@@ -267,7 +267,7 @@
   /* ===== flat, dark, library-first look ===== */
   :root { --chrome: #0d0d0f; --canvas: #060607; --card: #131316; --card-2: #1b1b1f; --line: #202025; --line-2: #2c2c33;
     --text: #f1f1f3; --muted: #8e8e99; --dim: #5f5f69; --cyan: #3d8bff; --cyan-ink: #fff; --cyan-soft: rgba(61, 139, 255, .14); --accent: #3d8bff; }
-  body { grid-template-columns: 68px 1fr; grid-template-rows: 52px 1fr 26px; background: var(--chrome);
+  body { grid-template-columns: 224px 1fr; grid-template-rows: 52px 1fr 26px; background: var(--chrome);
     font-family: Inter, "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif; }
 
   /* title bar */
@@ -282,19 +282,23 @@
   .keychip .keys { gap: 3px; } .keychip kbd { background: #2a2a31; border: 0; border-radius: 5px; padding: 1px 7px; font-size: 11.5px; font-weight: 700; min-width: 0; }
   .keychip .keys span { display: none; }
 
-  /* rail */
-  .side { padding: 8px 10px 12px; align-items: center; gap: 6px; }
-  .nav { width: 46px; height: 46px; padding: 0; justify-content: center; border-radius: 50%; }
-  .nav span { display: none; }
-  .nav svg { width: 22px; height: 22px; color: #9a9aa5; }
-  .nav:hover { background: #17171b; }
-  .nav.active { background: #26262c; } .nav.active svg { color: #fff; }
-  .nav.active::before { display: none; }
-  .appcard { background: none; border: 0; padding: 0; margin: 4px 0 0; width: 100%; }
-  .appcard .row { display: none; }
-  .appcard .btn { width: 100%; height: 30px; padding: 0; justify-content: center; font-size: 11.5px; border-radius: 8px; margin-top: 6px; }
-  .appcard #updatebtn { background: #25c26e; border-color: transparent; color: #04170d; }
-  .appcard #sitebtn { background: none; border-color: transparent; color: var(--muted); font-size: 15px; }
+  /* sidebar: labelled items, teal active pill, app card at the bottom */
+  .side { padding: 10px 12px 12px; gap: 3px; align-items: stretch; }
+  .nav { width: auto; height: auto; padding: 11px 14px; justify-content: flex-start; gap: 14px; border-radius: 10px; font-size: 15px; font-weight: 600; color: #9aa3b5; }
+  .nav span { display: inline; }
+  .nav svg { width: 20px; height: 20px; color: #8e98ab; }
+  .nav:hover { background: #12161d; color: #e7ebf2; }
+  .nav.active { background: rgba(34, 193, 241, .12); color: #fff; box-shadow: inset 0 0 0 1px rgba(34, 193, 241, .18); }
+  .nav.active svg { color: var(--accent2); }
+  .nav.active::before { display: block; content: ""; position: absolute; left: -12px; top: 10px; bottom: 10px; width: 3px; border-radius: 0 3px 3px 0; background: var(--accent2); box-shadow: 0 0 10px var(--accent2); }
+  .nav .count { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .appcard { background: #0e1219; border: 1px solid #1c2430; border-radius: 12px; padding: 12px; margin: 8px 0 0; }
+  .appcard .row { display: flex; }
+  .appcard .btn { width: 100%; height: 34px; padding: 0 12px; justify-content: center; font-size: 13.5px; border-radius: 8px; margin-top: 10px; background: #141a24; border: 1px solid #232d3d; }
+  .appcard .btn:hover { background: #19212e; }
+  .appcard #updatebtn { background: #25c26e; border-color: transparent; color: #04170d; margin-top: 10px; }
+  .appcard #updatebtn + #sitebtn { margin-top: 6px; }
+  :root { --accent2: #22c1f1; }
 
   /* content */
   main { margin: 0; border: 0; border-radius: 14px 0 0 0; background: var(--canvas); }
@@ -344,7 +348,7 @@
   .filters button { background: var(--card-2); border-color: transparent; }
 
   footer { background: none; }
-  @media (max-width: 860px) { body { grid-template-columns: 68px 1fr; } .keychip { display: none; } }
+  @media (max-width: 860px) { body { grid-template-columns: 68px 1fr; } .keychip { display: none; } .nav { justify-content: center; padding: 11px 0; } .nav span, .nav .count, .appcard { display: none; } }
 
   /* ===== player + trim editor ===== */
   .modal { background: rgba(2, 2, 3, .88); gap: 14px; grid-auto-flow: column; grid-template-columns: 56px minmax(0, 1060px) 56px; justify-content: center; align-items: center; padding: 20px; }
@@ -356,8 +360,8 @@
   .vhead input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 16px; font-weight: 700; }
   .vhead input:hover { background: #17171a; } .vhead input:focus { background: #17171a; border-color: var(--line-2); outline: 0; }
   .vmeta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-  .vstage { position: relative; background: #000; display: grid; place-items: center; height: min(52vh, 560px); cursor: pointer; }
-  .vstage video { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .vstage { position: relative; background: #000; height: min(52vh, 560px); flex: none; overflow: hidden; cursor: pointer; }
+  .vstage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
   .vbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 14px 8px; background: linear-gradient(transparent, rgba(0,0,0,.78)); opacity: 0; transition: opacity .15s; cursor: default; }
   .vstage:hover .vbar, .vstage.paused .vbar { opacity: 1; }
   .vprog { height: 4px; border-radius: 2px; background: rgba(255,255,255,.25); margin-bottom: 6px; position: relative; cursor: pointer; }
@@ -368,7 +372,7 @@
   .vctl input[type=range] { width: 84px; accent-color: #fff; }
   .grow { flex: 1; }
 
-  .editor { padding: 12px 18px 6px; }
+  .editor { padding: 12px 18px 6px; position: relative; z-index: 1; background: #0e0e10; flex: none; }
   .ruler { position: relative; height: 26px; margin: 0 0 4px; color: #9a9aa5; font-size: 12px; font-variant-numeric: tabular-nums; user-select: none; }
   .ruler span { position: absolute; top: 0; transform: translateX(-50%); }
   .ruler span:first-child { transform: none; } .ruler span.last { transform: translateX(-100%); }
@@ -425,7 +429,7 @@
   <div class="appcard">
     <div class="row"><svg><use href="#logo"/></svg><div><b>Rewind</b><small id="ver">v1.1.0</small></div></div>
     <button class="btn primary" id="updatebtn" hidden>Update available</button>
-    <button class="btn" id="sitebtn" title="Website and help">?</button>
+    <button class="btn" id="sitebtn">Website &amp; help</button>
   </div>
 </nav>
 
@@ -704,7 +708,7 @@ function render() {
   $("sitebtn").hidden = !S.website;
   $("updatebtn").hidden = !S.update;
   if (S.update) {
-    $("updatebtn").textContent = S.update.ready ? "Restart" : S.update.downloading ? "…" : "Update";
+    $("updatebtn").textContent = S.update.ready ? "Restart to update" : S.update.downloading ? "Downloading…" : "Update available";
     $("updatebtn").title = S.update.ready ? `Restart to update to v${S.update.version}` : S.update.downloading ? `Downloading v${S.update.version}…` : `Get v${S.update.version}`;
   }
   $("updatebtn").disabled = !!(S.update && S.update.downloading);
@@ -1186,7 +1190,7 @@ $("hkbtn").onclick = () => {
   $("hk").classList.add("listening");
   $("keys-set").innerHTML = "<kbd>Press keys…</kbd>";
   $("hkbtn").textContent = "Cancel";
-  $("hk-note").textContent = "Hold Ctrl, Alt or Shift and press a key, or press a function key alone.";
+  $("hk-note").textContent = "Press the key you want, on its own or with Ctrl, Alt or Shift. Esc cancels.";
 };
 function stopListening() {
   listening = false;
@@ -1201,13 +1205,13 @@ document.addEventListener("keydown", async (e) => {
   const k = vkOf(e);
   if (!k) return;
   const mods = (e.altKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.shiftKey ? 4 : 0);
-  const isF = /^F\d+$/.test(k[1]);
-  if (!mods && !isF) { $("hk-note").innerHTML = '<span class="warn">Add Ctrl, Alt or Shift so normal typing doesn\'t save replays.</span>'; return; }
+  const plain = !mods && !/^F\d+$/.test(k[1]);
   const label = [e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift", k[1]].filter(Boolean).join(" + ");
   listening = false;
   const r = await api("/api/hotkey", { mods, vk: k[0], label });
   stopListening();
   if (!r.ok) $("hk-note").innerHTML = `<span class="warn">${esc(r.error)}</span>`;
+  else if (plain) $("hk-note").innerHTML = `<span class="warn">${esc(k[1])} now saves a replay everywhere, so it won't type while Rewind runs.</span>`;
 });
 
 poll();

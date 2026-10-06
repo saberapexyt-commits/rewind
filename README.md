@@ -30,6 +30,12 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.5
+
+- Fixed the player: the video no longer spills over the timeline.
+- The shortcut can be any single key (like F8 or a letter), not just a combo.
+- The left sidebar is back to labelled items with a teal active pill and the app card at the bottom.
+
 ## 1.0.4
 
 - **New clip player** with a timeline, a thumbnail strip, volume, full screen and ← → to move between clips.
