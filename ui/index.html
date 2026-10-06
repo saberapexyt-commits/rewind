@@ -690,6 +690,10 @@
         <div style="display:flex;gap:8px"><button class="btn primary" id="copydiag">Copy report</button><button class="btn" id="openlog">Show log file</button></div>
       </div>
       <div class="set">
+        <div class="lbl"><b>Start with Windows</b><small>Opens Rewind in the tray when you sign in, so you never miss a clip.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-autostart"><span></span></label>
+      </div>
+      <div class="set">
         <div class="lbl"><b>Start hidden in the tray</b><small>Useful with a startup shortcut.</small></div>
         <label class="switch"><input type="checkbox" id="opt-hidden"><span></span></label>
       </div>
@@ -1555,6 +1559,7 @@ function renderSettings() {
   $("opt-desktop").checked = s.desktop_audio; $("opt-desktop").onchange = (e) => set({ desktop_audio: e.target.checked });
   $("opt-mic").checked = s.mic; $("opt-mic").onchange = (e) => set({ mic: e.target.checked });
   $("opt-tray").checked = s.close_to_tray; $("opt-tray").onchange = (e) => set({ close_to_tray: e.target.checked });
+  $("opt-autostart").checked = !!s.start_with_windows; $("opt-autostart").onchange = (e) => set({ start_with_windows: e.target.checked });
   $("opt-hidden").checked = s.start_hidden; $("opt-hidden").onchange = (e) => set({ start_hidden: e.target.checked });
   $("microw").style.display = s.mic ? "" : "none";
   $("outw").style.display = s.desktop_audio ? "" : "none";

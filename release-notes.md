@@ -1,3 +1,4 @@
-- **Choose which sound to record.** Settings → Audio → Sound to record lets you pick your headphones or speakers (or any other output) instead of following Windows. Leave it on "Follow the Windows default" and Rewind switches by itself when you plug in headphones. If the one you picked isn't connected, Rewind uses the Windows default and tells you.
+- **Start with Windows.** A new switch in Settings opens Rewind in the tray when you sign in, so you never miss a clip after a restart.
+- **Sound waveforms in the editor.** Video and sound clips on the timeline now show their audio, so you can line a cut up with a loud moment.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.

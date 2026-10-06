@@ -809,6 +809,38 @@ function renderTimeline() {
   inner.querySelectorAll("[data-rmtrack]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); removeTrack(b.dataset.rmtrack, Number(b.dataset.lane)); });
   inner.querySelectorAll("[data-tg]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const k = b.dataset.key; E.P.lanes[k] = E.P.lanes[k] || {}; E.P.lanes[k][b.dataset.tg] = !E.P.lanes[k][b.dataset.tg]; commit(); });
   updatePlayhead();
+  paintWaves();
+}
+/* the sound of each clip, drawn inside it so a cut can line up with a loud moment */
+const waveCache = {};
+function paintWaves() {
+  document.querySelectorAll("#ed-inner canvas.wv").forEach((cv2) => {
+    const src = cv2.dataset.src, w = cv2.parentElement.clientWidth - 4, h = cv2.parentElement.clientHeight - 4;
+    if (w < 6) return;
+    const w0 = waveCache[src];
+    if (!w0) {
+      if (w0 === undefined) {
+        waveCache[src] = null;
+        get("/api/editor/wave?src=" + encodeURIComponent(src)).then((r) => { waveCache[src] = r && r.ok ? r : { peaks: [], rate: 20 }; paintWaves(); }).catch(() => { waveCache[src] = { peaks: [], rate: 20 }; });
+      }
+      return;
+    }
+    if (!w0.peaks.length) return;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    cv2.width = Math.round(w * dpr); cv2.height = Math.round(h * dpr);
+    cv2.style.width = w + "px"; cv2.style.height = h + "px";
+    const g = cv2.getContext("2d"); g.scale(dpr, dpr);
+    const inn = Number(cv2.dataset.in), dur = Number(cv2.dataset.dur), sp = Number(cv2.dataset.speed), audio = cv2.dataset.k === "a";
+    const mid = audio ? h / 2 : h * 0.78, amp = audio ? h * 0.42 : h * 0.25;
+    g.fillStyle = audio ? "rgba(190,255,225,.85)" : "rgba(255,255,255,.78)";
+    for (let x = 0; x < w; x += 2) {
+      const a = Math.floor((inn + (x / w) * dur * sp) * w0.rate), b = Math.max(a + 1, Math.floor((inn + ((x + 2) / w) * dur * sp) * w0.rate));
+      let m = 0;
+      for (let i = a; i < b && i < w0.peaks.length; i++) if (w0.peaks[i] > m) m = w0.peaks[i];
+      const v = Math.max(1, (m / 255) * amp);
+      g.fillRect(x, mid - v, 1.4, v * 2);
+    }
+  });
 }
 function itemHtml(kind, it, z, sel) {
   const off = laneFlag(kind === "v" ? "main" : kind + (it.lane || 0), "hidden") || (kind === "a" && laneFlag("a" + (it.lane || 0), "muted")) ? " off" : "";
@@ -822,7 +854,8 @@ function itemHtml(kind, it, z, sel) {
   else if (kind === "e") label = esc((effOf(it.type) || [0, it.type])[1]);
   else if (kind === "l") label = esc((lookOf(it.type) || [0, it.type])[1]);
   else label = esc(niceName(it.src));
-  return `<div class="ed-item ${cls}${sel}${off}" data-kind="${kind}" data-id="${it.id}" style="${style}"><span class="hd l" data-h="l"></span><span class="lb">${label}</span><span class="hd r" data-h="r"></span></div>`;
+  const wave = (kind === "v" || kind === "o" || kind === "a") ? `<canvas class="wv" data-src="${esc(it.src)}" data-in="${it.in}" data-dur="${kind === "v" ? it.len : itemSpan(kind, it)}" data-speed="${kind === "a" ? 1 : it.speed}" data-k="${kind}"></canvas>` : "";
+  return `<div class="ed-item ${cls}${sel}${off}" data-kind="${kind}" data-id="${it.id}" style="${style}">${wave}<span class="hd l" data-h="l"></span><span class="lb">${label}</span><span class="hd r" data-h="r"></span></div>`;
 }
 
 /* timeline pointer handling */

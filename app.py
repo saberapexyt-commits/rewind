@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.2"
+VERSION = "1.6.3"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -60,7 +60,7 @@ DEFAULTS = {
     "hotkey_bookmark": None, "share_ok": False,
     "clip_toast": True, "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "capture_input": "", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
-    "close_to_tray": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
+    "close_to_tray": True, "start_with_windows": False, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
@@ -94,6 +94,25 @@ def load_settings():
     if not s.get("sound", True):  # older settings files
         s["sound_name"], s["sound"] = "off", True
     return s
+
+
+def set_autostart(on, name="Rewind"):
+    """Start with Windows: a per-user entry that opens Rewind hidden in the tray at sign-in. Only for the installed exe."""
+    if os.name != "nt" or not getattr(sys, "frozen", False):
+        return False
+    import winreg
+    key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Run", 0, winreg.KEY_SET_VALUE)
+    try:
+        if on:
+            winreg.SetValueEx(key, name, 0, winreg.REG_SZ, f'"{sys.executable}" --hidden')
+        else:
+            try:
+                winreg.DeleteValue(key, name)
+            except FileNotFoundError:
+                pass
+    finally:
+        key.Close()
+    return True
 
 
 def trim_log(limit=1_000_000, keep=300_000):
@@ -149,6 +168,7 @@ class App:
         self.gpus = []
         self._durations = {}
         self._count, self._count_t = 0, 0.0
+        self._waves = {}
 
     def check_update(self, manual=False):
         """Look for a newer GitHub release; when running as the exe, download it in the background."""
@@ -355,6 +375,11 @@ class App:
         restart = any(k in RESTART_KEYS and patch[k] != self.settings.get(k) for k in patch)
         self.settings.update(patch)
         save_settings(self.settings)
+        if "start_with_windows" in patch:
+            try:
+                set_autostart(bool(patch["start_with_windows"]))
+            except OSError as e:
+                log(f"couldn't change start with Windows: {e}")
         for w, k in HOTKEY_KEYS.items():
             if k in patch:
                 self.apply_hotkey(w)
@@ -618,6 +643,22 @@ class App:
                 raise ValueError("That audio file isn't available any more.")
             return Path(p)
         return self.clip_path(src)
+
+    def waveform(self, src):
+        """Loudness of a clip or sound, 20 values per second (0 to 255), for drawing on the editor timeline."""
+        import numpy as np
+        p = self.resolve_src(src)
+        key = (str(p), p.stat().st_mtime)
+        if key not in self._waves:
+            r = subprocess.run([engine.FFMPEG, "-v", "error", "-i", str(p), "-vn", "-ac", "1", "-ar", "2000", "-f", "s16le", "-"],
+                               capture_output=True, timeout=180, creationflags=0x08000000, stdin=subprocess.DEVNULL)
+            a = np.frombuffer(r.stdout[: len(r.stdout) // 2 * 2], np.int16).astype(np.float32) / 32768.0
+            n = len(a) // 100
+            peaks = np.abs(a[: n * 100]).reshape(n, 100).max(axis=1) if n else np.zeros(0, np.float32)
+            self._waves[key] = [int(v) for v in np.clip(np.sqrt(peaks) * 255, 0, 255)]
+            if len(self._waves) > 60:
+                self._waves.pop(next(iter(self._waves)))
+        return {"ok": True, "rate": 20, "peaks": self._waves[key]}
 
     def pick_audio(self):
         types = ("Audio and video (*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.mp4;*.mov;*.mkv;*.webm)", "All files (*.*)")
@@ -949,6 +990,11 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, APP.search_sounds(q.get("q", [""])[0], q.get("kind", ["sfx"])[0], q.get("page", ["1"])[0]))
             if path == "/api/editor/project":
                 return self._send(200, APP.load_project())
+            if path == "/api/editor/wave":
+                try:
+                    return self._send(200, APP.waveform(unquote(parse_qs(urlparse(self.path).query).get("src", [""])[0])))
+                except Exception:
+                    return self._send(200, {"ok": False, "peaks": []})
             if path == "/api/editor/job":
                 return self._send(200, APP.job_state(parse_qs(urlparse(self.path).query).get("id", [""])[0]))
             if path.startswith("/ext/"):
@@ -1247,6 +1293,11 @@ def main():
     APP = App()
     log(f"Rewind {VERSION} starting")
     engine.LOG_FILE = str(LOG_FILE)
+    if APP.settings.get("start_with_windows"):
+        try:
+            set_autostart(True)                      # keeps the entry pointing at the exe's current place
+        except OSError:
+            pass
     engine.kill_stale_ffmpeg(log)
     start_server()
     h = APP.settings["hotkey"]

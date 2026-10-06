@@ -166,3 +166,5 @@
 .ed-tlbar { overflow-x: auto; }
 .ed-fx.on .th { outline: 2px solid #3d8bff; outline-offset: -2px; }
 .ed-ph.pv { color: #7db4ff; }
+
+.ed-item .wv { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; z-index: 0; }
