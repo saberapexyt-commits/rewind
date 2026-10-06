@@ -25,6 +25,8 @@ if IS_WIN:
     user32.FindWindowW.argtypes = [w.LPCWSTR, w.LPCWSTR]
     user32.FindWindowW.restype = w.HWND
     user32.IsWindow.argtypes = [w.HWND]
+    dwm = ctypes.WinDLL("dwmapi")
+    dwm.DwmSetWindowAttribute.argtypes = [w.HWND, w.DWORD, ctypes.c_void_p, w.DWORD]
     user32.IsWindowVisible.argtypes = [w.HWND]
     user32.GetWindowThreadProcessId.argtypes = [w.HWND, ctypes.POINTER(w.DWORD)]
 
@@ -142,11 +144,23 @@ class Manager:
             pass
 
     # ---- states
+    def _flush(self, flush):
+        """Windows 11 rounds a window's corners and draws a thin border around it. Filling the screen should look
+        properly full, with nothing of the desktop behind showing at the sides, top or corners."""
+        try:
+            corner = ctypes.c_int(1 if flush else 0)                                   # 1: don't round, 0: Windows' default
+            border = ctypes.c_uint(0xFFFFFFFE if flush else 0xFFFFFFFF)               # no border / the default one
+            dwm.DwmSetWindowAttribute(self._hwnd(), 33, ctypes.byref(corner), 4)
+            dwm.DwmSetWindowAttribute(self._hwnd(), 34, ctypes.byref(border), 4)
+        except Exception:
+            pass
+
     def maximize(self):
         with self.lock:
             if self.state == "normal":
                 self.restore_rect = self._rect()
             _, work = self._mon(user32.MonitorFromWindow(self._hwnd(), 2))
+            self._flush(True)
             self._put(*work)
             self.state = "max"
 
@@ -163,6 +177,7 @@ class Manager:
             l = min(max(r[0], work[0]), max(work[0], work[2] - ww))
             t = min(max(r[1], work[1]), max(work[1], work[3] - hh))
             self._put(l, t, l + ww, t + hh)
+        self._flush(False)
         self.state = "normal"
 
     def toggle_maximize(self):
@@ -179,6 +194,7 @@ class Manager:
                 self.restore_rect = self._rect()
             _, work = self._mon(user32.MonitorFromWindow(self._hwnd(), 2))
             mid = (work[0] + work[2]) // 2
+            self._flush(True)
             self._put(*((work[0], work[1], mid, work[3]) if side == "left" else (mid, work[1], work[2], work[3])))
             self.state = "half"
 
@@ -195,6 +211,7 @@ class Manager:
                 nl = cx - int(frac * ww)
                 nt = cy - min(cy - t, 24)
                 self._put(nl, nt, nl + ww, nt + hh)
+                self._flush(False)
                 self.state = "normal"
                 l, t, r, b = nl, nt, nl + ww, nt + hh
             self.op = ("drag", cx, cy, l, t)

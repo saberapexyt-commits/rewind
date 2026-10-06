@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.6
+
+- **Full screen really fills the screen.** When the window fills the screen (or half of it), Windows 11's rounded corners and thin border are turned off, so nothing of what's behind shows at the sides, top or corners. The taskbar stays visible. Going back to a normal window brings the rounded corners back.
+
 ## 1.6.5
 
 - **Fixes a crash ("The memory could not be read").** Following your headphones started and stopped the Windows audio library every few seconds, which is not safe next to the running recording and could corrupt memory. Rewind now asks Windows directly which output is the default (a safe call that doesn't touch the audio library) and only restarts the sound capture, without stopping the recording, when you actually switch. The audio library is also locked so two parts of Rewind can't use it at once.
