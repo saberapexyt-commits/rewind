@@ -30,14 +30,50 @@ RATE = 48000
 APP_DIR = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).parent
 
 
+BIN_DIR = Path(os.environ.get("APPDATA", Path.home() / ".config")) / "Rewind" / "bin"
+FFMPEG_URL = "https://github.com/BtbN/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip"
+
+
 def ffbin(name):
-    for c in (APP_DIR / f"{name}.exe", APP_DIR / name):
+    for c in (APP_DIR / f"{name}.exe", APP_DIR / name, BIN_DIR / f"{name}.exe"):
         if c.exists():
             return str(c)
     return shutil.which(name) or name
 
 
 FFMPEG, FFPROBE = ffbin("ffmpeg"), ffbin("ffprobe")
+
+
+def have_ffmpeg():
+    return TEST or (Path(FFMPEG).exists() and Path(FFPROBE).exists()) or bool(shutil.which("ffmpeg") and shutil.which("ffprobe"))
+
+
+def download_ffmpeg(progress=lambda pct: None):
+    """First run of the single-file exe: fetch ffmpeg + ffprobe into the Rewind data folder (APPDATA, Rewind, bin)."""
+    global FFMPEG, FFPROBE
+    import urllib.request
+    import zipfile
+    BIN_DIR.mkdir(parents=True, exist_ok=True)
+    tmp = BIN_DIR / "ffmpeg.zip.part"
+    req = urllib.request.Request(FFMPEG_URL, headers={"User-Agent": "Rewind"})
+    with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+        total, got = int(r.headers.get("Content-Length") or 0), 0
+        while True:
+            chunk = r.read(1 << 20)
+            if not chunk:
+                break
+            f.write(chunk)
+            got += len(chunk)
+            if total:
+                progress(int(got * 100 / total))
+    with zipfile.ZipFile(tmp) as z:
+        for name in ("ffmpeg.exe", "ffprobe.exe"):
+            member = next(n for n in z.namelist() if n.endswith("/bin/" + name))
+            with z.open(member) as src, open(BIN_DIR / (name + ".part"), "wb") as dst:
+                shutil.copyfileobj(src, dst)
+            (BIN_DIR / (name + ".part")).replace(BIN_DIR / name)
+    tmp.unlink()
+    FFMPEG, FFPROBE = ffbin("ffmpeg"), ffbin("ffprobe")
 
 
 def run(cmd, timeout=60):

@@ -801,7 +801,7 @@ function renderSettings() {
   seg("seg-capture", [["auto", "Automatic"], ["screen", "Whole screen"], ["window", "Game window", !wc]], s.capture, "capture");
   $("cap-note").textContent = wc
     ? "Automatic records the screen, and switches to the game's own window if the game shows up black."
-    : "Game window recording needs a newer ffmpeg (version 8 or later). The download from the website includes it.";
+    : "Game window recording needs a newer ffmpeg (version 8 or later). Rewind downloads its own copy on first run.";
   const chip = (label, exe, action, title) => `<span class="chip">${esc(label)}<button data-exe="${esc(exe)}" data-act="${action}" title="${title}" aria-label="${title}">×</button></span>`;
   const wg = s.window_games || [];
   $("wg-row").style.display = wg.length ? "" : "none";

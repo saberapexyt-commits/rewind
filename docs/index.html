@@ -156,7 +156,7 @@
       <h2>Three steps, then forget about it.</h2>
       <p class="intro">Rewind sits in the tray and records over itself, so it never fills your drive. You only keep the moments you ask for.</p>
       <div class="steps">
-        <div class="step"><h3>Open Rewind</h3><p>Unzip it anywhere and run <code>Rewind.exe</code>. It starts buffering right away and tucks into the tray.</p></div>
+        <div class="step"><h3>Open Rewind</h3><p>Run <code>Rewind.exe</code>. The first launch fetches its video tools by itself, then it starts buffering right away and tucks into the tray.</p></div>
         <div class="step"><h3>Play like normal</h3><p>Your graphics card does the recording, on a part of the chip your game doesn't use.</p></div>
         <div class="step"><h3>Press <kbd>Alt</kbd> + <kbd>F8</kbd></h3><p>You hear a short chime and the clip is saved to <code>Videos\Rewind</code>, named after the game.</p></div>
       </div>
@@ -251,7 +251,7 @@
     repo = owner ? `${owner}/${name}` : "";
   }
   const gh = repo ? `https://github.com/${repo}` : "https://github.com";
-  const zip = repo ? `${gh}/releases/latest/download/Rewind-windows.zip` : gh;
+  const zip = repo ? `${gh}/releases/latest/download/Rewind.exe` : gh;
   document.querySelectorAll(".repo-link").forEach((a) => a.href = gh);
   document.querySelectorAll(".issues-link").forEach((a) => a.href = gh + "/issues");
   document.querySelectorAll(".dl").forEach((a) => a.href = zip);
@@ -260,11 +260,11 @@
     fetch(`https://api.github.com/repos/${repo}/releases/latest`).then((r) => r.ok ? r.json() : null).then((rel) => {
       if (!rel) return;
       const v = rel.tag_name.replace(/^v/, "");
-      const asset = (rel.assets || []).find((a) => a.name === "Rewind-windows.zip");
+      const asset = (rel.assets || []).find((a) => a.name === "Rewind.exe");
       document.querySelectorAll(".dl-label").forEach((s) => s.textContent = `Download Rewind ${v}`);
       document.getElementById("foot-ver").textContent = "v" + v;
       document.getElementById("meta").textContent =
-        `Free · Windows 10 and 11 · ${asset ? Math.round(asset.size / 1e6) + " MB zip" : "NVIDIA, AMD and Intel"}`;
+        `Free · Windows 10 and 11 · ${asset ? Math.round(asset.size / 1e6) + " MB" : "NVIDIA, AMD and Intel"}`;
     }).catch(() => {});
   }
 </script>

@@ -218,7 +218,7 @@ def main():
     if run and run.get("conclusion") == "success":
         say(f"\nDone. Rewind {tag} is live.")
         say(f"  Website:   {site}")
-        say(f"  Download:  {repo['html_url']}/releases/latest/download/Rewind-windows.zip")
+        say(f"  Download:  {repo['html_url']}/releases/latest/download/Rewind.exe")
         webbrowser.open(site)
     elif run:
         say(f"\nThe build failed. Open it, click the red step, and paste the error to Claude:\n  {run['html_url']}")

@@ -45,24 +45,11 @@ jobs:
           # window capture (the black-clip fix) needs the gfxcapture filter, in ffmpeg 8+
           dist/Rewind/ffmpeg.exe -hide_banner -h filter=gfxcapture | Select-Object -First 25
 
-      - name: Zip it
-        shell: pwsh
-        run: Compress-Archive -Path dist/Rewind/* -DestinationPath Rewind-windows.zip
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Rewind-windows
-          path: dist/Rewind/
-
       - name: Publish the release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            Rewind-windows.zip
-            dist/Rewind/Rewind.exe
+          files: dist/Rewind/Rewind.exe
           name: Rewind ${{ github.ref_name }}
           body: |
-            Download **Rewind-windows.zip**, unzip it anywhere, and run `Rewind.exe`.
-            Keep `ffmpeg.exe` and `ffprobe.exe` in the same folder.
-            Already installed? Rewind updates itself: it downloads `Rewind.exe` in the background and offers a one-click restart.
+            Download **Rewind.exe** and run it. That's the whole app: on first run it fetches its video tools by itself, and after that it updates itself.

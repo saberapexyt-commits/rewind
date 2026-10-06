@@ -12,7 +12,7 @@ That's it. The script:
 - creates a public `rewind` repo on your GitHub and uploads this folder,
 - turns on the website at `https://<your-name>.github.io/rewind/`,
 - tags `v1.0.0`, which builds **Rewind.exe** in the cloud and publishes it as a Release,
-- waits about 5 minutes, then opens the website. Its **Download** button gives `Rewind-windows.zip` (Rewind.exe + ffmpeg).
+- waits about 5 minutes, then opens the website. Its **Download** button gives a single `Rewind.exe`. On first run it downloads ffmpeg by itself, so there's nothing to unzip.
 
 **Shipping an update:** change `VERSION` in `app.py` (for example to `"1.0.1"`) and run `publish.bat` again. Anyone on an older version gets the new `Rewind.exe` downloaded in the background and sees **Restart to update** in the app (one click, and it relaunches on the new version).
 

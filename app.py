@@ -562,10 +562,27 @@ def main():
     APP.hotkey.set(h["mods"], h["vk"])
     APP.watcher.tick()
     APP.watcher.start()
-    if APP.settings.get("game_only") and not APP.current_game():
-        APP.rec.stop(waiting=True)
+    def begin_buffer():
+        if APP.settings.get("game_only") and not APP.current_game():
+            APP.rec.stop(waiting=True)
+        else:
+            APP.rec.start()
+
+    if engine.have_ffmpeg():
+        begin_buffer()
     else:
-        APP.rec.start()
+        def first_run_setup():
+            APP.rec.state = "starting"
+            try:
+                log("ffmpeg missing, downloading")
+                engine.download_ffmpeg(lambda p: setattr(APP.rec, "notice", f"First run: downloading video tools ({p}%). Rewind starts by itself when it's done."))
+                APP.rec.notice = ""
+                begin_buffer()
+            except Exception as e:
+                log(f"ffmpeg download failed: {e}")
+                APP.rec.state = "error"
+                APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
+        threading.Thread(target=first_run_setup, daemon=True).start()
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
     threading.Thread(target=APP.check_update, daemon=True).start()
     APP.start_tray()
