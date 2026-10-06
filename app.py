@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.7"
+VERSION = "1.5.8"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -291,8 +291,8 @@ class App:
             if "x" not in m:
                 return
             n = int(self.settings.get("length", 30))
-            span = f"{n // 60} min" if n >= 60 and n % 60 == 0 else f"{n} seconds"
-            overlay.show((m["x"], m["y"], m["w"], m["h"]), "Clip captured", f"{name}  ·  last {span}", "SAVED")
+            span = f"{n // 60} min" if n >= 60 and n % 60 == 0 else f"{n}s"
+            overlay.show((m["x"], m["y"], m["w"], m["h"]), "Clip captured", "", span)
         except Exception as e:
             log(f"pop-up failed: {e}")
 

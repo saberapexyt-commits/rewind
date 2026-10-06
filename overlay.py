@@ -26,7 +26,8 @@ _class_ready = False
 _wndproc = None
 
 if IS_WIN:
-    user32, gdi32, kernel32 = ctypes.windll.user32, ctypes.windll.gdi32, ctypes.windll.kernel32
+    # private copies: setting argtypes on the shared ctypes.windll objects would break every other caller in the app
+    user32, gdi32, kernel32 = ctypes.WinDLL("user32"), ctypes.WinDLL("gdi32"), ctypes.WinDLL("kernel32")
     WNDPROC = ctypes.WINFUNCTYPE(ctypes.c_ssize_t, w.HWND, ctypes.c_uint, w.WPARAM, w.LPARAM)
 
     class WNDCLASSW(ctypes.Structure):
@@ -93,76 +94,43 @@ def _gradient(size, c1, c2):
     return Image.fromarray(gp, "RGBA")
 
 
-def render_card(title, sub, badge="", scale=1.0):
-    """A slim capsule: a rewind icon inside a ring that counts down, the title, and the game. Returns the image
-    and where the ring goes (cx, cy, radius) for the animation."""
+def render_card(title, sub="", badge="", scale=1.0):
+    """A small, quiet card: a rewind mark, one line of text, and the length on the right."""
     ss = 3
     k = scale * ss
-    pad = 22                                  # room around the capsule for the shadow
-    ch = 66
-    f_title = _font(["segoeuib.ttf", "seguisb.ttf", "arialbd.ttf"], int(18 * k))
-    f_sub = _font(["segoeui.ttf", "arial.ttf"], int(13 * k))
+    pad, ch = 18, 50
+    f_title = _font(["segoeuisb.ttf", "seguisb.ttf", "segoeuib.ttf", "arialbd.ttf"], int(15.5 * k))
+    f_badge = _font(["segoeui.ttf", "arial.ttf"], int(13.5 * k))
     probe = ImageDraw.Draw(Image.new("RGBA", (4, 4)))
-    tw = max(probe.textlength(title, font=f_title), min(probe.textlength(sub, font=f_sub), 250 * k))
-    icon = 44
-    cw = int(16 + icon + 14 + tw / k + 26)
+    tw = probe.textlength(title, font=f_title) / k
+    bw = probe.textlength(badge, font=f_badge) / k if badge else 0
+    cw = int(18 + 20 + 12 + tw + (16 + bw if badge else 0) + 18)
     W, H = int((cw + pad * 2) * k), int((ch + pad * 2) * k)
     X0, Y0, X1, Y1 = int(pad * k), int(pad * k), int((pad + cw) * k), int((pad + ch) * k)
-    rad = (Y1 - Y0) // 2
+    rad = int(14 * k)
 
     img = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sh = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(sh).rounded_rectangle((X0, Y0 + int(6 * k), X1, Y1 + int(6 * k)), rad, fill=(0, 0, 0, 120))
-    img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(11 * k)))
+    ImageDraw.Draw(sh).rounded_rectangle((X0, Y0 + int(4 * k), X1, Y1 + int(4 * k)), rad, fill=(0, 0, 0, 110))
+    img = Image.alpha_composite(img, sh.filter(ImageFilter.GaussianBlur(9 * k)))
     d = ImageDraw.Draw(img)
-    d.rounded_rectangle((X0, Y0, X1, Y1), rad, fill=(13, 15, 21, 244))
-    # lit edge: a brighter rim that fades out toward the bottom
-    rim = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    ImageDraw.Draw(rim).rounded_rectangle((X0, Y0, X1, Y1), rad, outline=(255, 255, 255, 255), width=max(1, int(1.4 * k)))
-    ra = np.asarray(rim).copy()
-    fade = np.clip(0.9 - (np.arange(H) - Y0) / max(1, (Y1 - Y0)) * 0.75, 0.1, 1)
-    ra[..., 3] = (ra[..., 3] * fade[:, None] * 0.22).astype(np.uint8)
-    img = Image.alpha_composite(img, Image.fromarray(ra, "RGBA"))
-    d = ImageDraw.Draw(img)
+    d.rounded_rectangle((X0, Y0, X1, Y1), rad, fill=(16, 17, 21, 246), outline=(255, 255, 255, 30), width=max(1, int(k)))
 
-    # icon disc with a rewind symbol
-    dia = int(icon * k)
-    ix, iy = X0 + int(16 * k), Y0 + (Y1 - Y0 - dia) // 2
-    disc = _gradient(dia, ACCENT_A, ACCENT_B)
-    dm = Image.new("L", (dia, dia), 0)
-    ImageDraw.Draw(dm).ellipse((0, 0, dia - 1, dia - 1), fill=255)
-    img.paste(disc, (ix, iy), dm)
-    cx, cy = ix + dia / 2, iy + dia / 2
-    u = dia / 44
-    for dx in (-5.5, 6.5):                   # two triangles pointing left
-        d.polygon([(cx + (dx + 6) * u, cy - 8.5 * u), (cx + (dx + 6) * u, cy + 8.5 * u), (cx + (dx - 6.5) * u, cy)], fill=(255, 255, 255, 255))
-        d.rounded_rectangle((cx + (dx - 7.5) * u, cy - 8.5 * u, cx + (dx - 5.2) * u, cy + 8.5 * u), 1, fill=(255, 255, 255, 255)) if False else None
-
-    tx = ix + dia + int(14 * k)
-    d.text((tx, Y0 + int(11 * k)), title, font=f_title, fill=(255, 255, 255, 255))
-    d.text((tx, Y0 + int(36 * k)), _fit(d, sub, f_sub, X1 - tx - 20 * k), font=f_sub, fill=(142, 150, 170, 255))
+    # the mark: two small triangles pointing back, the "rewind" sign, in the accent colour
+    cx, cy, u = X0 + int(18 * k) + 10 * k, (Y0 + Y1) / 2, k
+    for dx in (-5.2, 5.2):
+        d.polygon([(cx + (dx + 5) * u, cy - 7.5 * u), (cx + (dx + 5) * u, cy + 7.5 * u), (cx + (dx - 5.6) * u, cy)], fill=ACCENT_A + (255,))
+    tx = X0 + int((18 + 20 + 12) * k)
+    d.text((tx, cy), title, font=f_title, fill=(246, 247, 250, 255), anchor="lm")
+    if badge:
+        d.text((X1 - int(18 * k), cy), badge, font=f_badge, fill=(130, 138, 156, 255), anchor="rm")
 
     img = img.resize((W // ss, H // ss), Image.LANCZOS)
-    s = scale
-    ring = ((ix + dia / 2) / ss, (iy + dia / 2) / ss, dia / ss / 2 + 3.2 * s)
-    return img, ring
+    return img, None
 
 
 def _frame(base, ring, frac):
-    """One animation frame: the card plus the ring around the icon, which empties as the card runs out."""
-    im = base.copy()
-    cx, cy, r = ring
-    q = 4
-    n = int(2 * (r + 4)) * q
-    patch = Image.new("RGBA", (n, n), (0, 0, 0, 0))
-    pd = ImageDraw.Draw(patch)
-    c, rr, wd = n / 2, r * q, max(2, int(2.2 * q))
-    pd.ellipse((c - rr, c - rr, c + rr, c + rr), outline=(255, 255, 255, 30), width=wd)
-    if frac > 0.004:
-        pd.arc((c - rr, c - rr, c + rr, c + rr), -90, -90 + 360 * max(0.0, min(1.0, frac)), fill=ACCENT_A + (255,), width=wd)
-    patch = patch.resize((n // q, n // q), Image.LANCZOS)
-    im.alpha_composite(patch, (int(cx - n / q / 2), int(cy - n / q / 2)))
-    return im
+    return base
 
 
 def _bgra_premultiplied(im):

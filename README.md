@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.8
+
+- **Fixes the window not dragging after you clip something.** The "Clip captured" pop-up changed some shared Windows settings that the window dragging relies on. It now keeps its own, so dragging keeps working.
+- **More minimal pop-up.** A small dark card with the rewind mark, "Clip captured" and the replay length.
+
 ## 1.5.7
 
 - **New look for the "Clip captured" pop-up.** A slim capsule with a rewind icon inside a ring that counts down, the title, and the game. Cleaner and smaller than before.
