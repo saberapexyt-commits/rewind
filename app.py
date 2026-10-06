@@ -21,7 +21,7 @@ import engine
 import games
 import winbits
 
-VERSION = "1.0.0"
+VERSION = "1.0.1"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -53,7 +53,7 @@ DEFAULTS = {
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "sound": True, "sound_name": "chime", "sound_volume": "medium",
     "capture": "auto", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
-    "close_to_tray": True, "start_hidden": False,
+    "close_to_tray": True, "auto_update": True, "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
 RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "capture"}
@@ -98,12 +98,14 @@ class App:
         self.mics = []
         self.port = 0
         self.tray_hint_shown = False
-        self.update = None  # {"version", "url"} when GitHub has a newer release
+        self.update = None  # {"version", "url", ...} when GitHub has a newer release
+        self.update_status = {"state": "idle", "checked": None, "error": ""}
 
-    def check_update(self):
+    def check_update(self, manual=False):
         """Look for a newer GitHub release; when running as the exe, download it in the background."""
-        if not REPO:
+        if not REPO or self.update_status["state"] == "checking":
             return
+        self.update_status.update(state="checking", error="")
         try:
             import urllib.request
             req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/latest",
@@ -111,16 +113,29 @@ class App:
             with urllib.request.urlopen(req, timeout=10) as r:
                 rel = json.load(r)
             tag = rel.get("tag_name", "")
+            self.update_status["checked"] = int(time.time())
             if version_tuple(tag) <= version_tuple(VERSION):
+                self.update = None
+                self.update_status["state"] = "latest"
                 return
             asset = next((a["browser_download_url"] for a in rel.get("assets", []) if a.get("name") == "Rewind.exe"), None)
-            self.update = {"version": tag.lstrip("v"), "url": rel.get("html_url") or WEBSITE,
-                           "ready": False, "auto": bool(asset and getattr(sys, "frozen", False))}
+            if not (self.update and self.update.get("version") == tag.lstrip("v")):
+                self.update = {"version": tag.lstrip("v"), "url": rel.get("html_url") or WEBSITE,
+                               "notes": (rel.get("body") or "").strip()[:600],
+                               "ready": False, "auto": bool(asset and getattr(sys, "frozen", False))}
+            self.update_status["state"] = "available"
             log(f"update available: {tag}")
-            if self.update["auto"]:
+            if self.update["auto"] and not self.update["ready"] and (manual or self.settings.get("auto_update", True)):
+                self.update["downloading"] = True
                 self.download_update(asset)
         except Exception as e:
-            log(f"update check skipped: {e}")
+            log(f"update check failed: {e}")
+            self.update_status.update(state="error", error="Couldn't reach GitHub. Check your internet and try again.")
+
+    def update_loop(self):
+        while True:
+            self.check_update()
+            time.sleep(6 * 3600)
 
     def download_update(self, url):
         import urllib.request
@@ -134,10 +149,12 @@ class App:
                 raise RuntimeError("downloaded file is too small")
             part.replace(UPDATE_DIR / "Rewind-new.exe")
             self.update["ready"] = True
+            self.update["downloading"] = False
             log("update downloaded, ready to install")
         except Exception as e:
             log(f"update download failed: {e}")
             self.update["auto"] = False  # fall back to opening the release page
+            self.update["downloading"] = False
 
     def apply_update(self):
         """Swap in the downloaded exe and relaunch. A tiny batch file does it after this process exits."""
@@ -248,7 +265,7 @@ class App:
             "events": self.events[-5:],
             "clip_count": len(self.clip_files()),
             "native_window": self.window is not None,
-            "website": WEBSITE, "update": self.update,
+            "website": WEBSITE, "update": self.update, "update_status": self.update_status,
         }
 
     def clip_files(self):
@@ -443,6 +460,9 @@ class Handler(BaseHTTPRequestHandler):
         try:
             if path == "/api/save":
                 return self._send(200, APP.save_replay())
+            if path == "/api/update/check":
+                threading.Thread(target=APP.check_update, kwargs={"manual": True}, daemon=True).start()
+                return self._send(200, {"ok": True})
             if path == "/api/update/apply":
                 return self._send(200, {"ok": APP.apply_update()})
             if path == "/api/toggle":
@@ -584,7 +604,7 @@ def main():
                 APP.rec.error = "Couldn't download the video tools. Check your internet and restart Rewind."
         threading.Thread(target=first_run_setup, daemon=True).start()
     threading.Thread(target=lambda: setattr(APP, "mics", engine.audio_devices()), daemon=True).start()
-    threading.Thread(target=APP.check_update, daemon=True).start()
+    threading.Thread(target=APP.update_loop, daemon=True).start()
     APP.start_tray()
     hidden = APP.settings.get("start_hidden") or "--hidden" in sys.argv
     if os.environ.get("REWIND_HEADLESS") == "1":

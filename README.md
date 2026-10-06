@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.0.1
+
+- New neon Home screen: a big Save replay button, game-art recent replays, no waveform.
+- **Settings → Updates** has a Check for updates button, update status and an auto-download switch.
+
 ## Auto-update
 
 - **Auto-update.** Like AutoClip: Rewind checks GitHub on startup, downloads the new `Rewind.exe` quietly, and swaps itself in when you press **Restart to update**. Each release now also attaches a standalone `Rewind.exe`.

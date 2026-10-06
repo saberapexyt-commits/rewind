@@ -263,6 +263,76 @@
     .hero-top { flex-direction: column; }
     .set { flex-direction: column; align-items: flex-start; }
   }
+
+  /* ===== gamer look ===== */
+  :root { --canvas: #080b12; --chrome: #0b0f17; --card: #101622; --card-2: #151c2b; --line: #1d2638; --line-2: #2a3650;
+    --cyan: #22d3ee; --blue: #2f7bff; --violet: #8b5cf6; --pink: #ff3d8b; --grad: linear-gradient(100deg, #2f7bff, #22d3ee); }
+  body { background: var(--chrome); }
+  main { border: 1px solid transparent; background: linear-gradient(var(--canvas), var(--canvas)) padding-box,
+    linear-gradient(160deg, rgba(34,211,238,.7), rgba(139,92,246,.45) 55%, rgba(255,61,139,.25)) border-box; }
+  .btn.primary, .seg button.on, .filters button.on { background: var(--grad); border-color: transparent; color: #04121c; }
+  .btn.primary:hover { filter: brightness(1.1); background: var(--grad); }
+  .nav.active { background: linear-gradient(90deg, rgba(34,211,238,.16), rgba(139,92,246,.06)); }
+  .nav.active::before { background: linear-gradient(var(--cyan), var(--violet)); box-shadow: 0 0 12px var(--cyan); }
+  .pill { box-shadow: 0 0 18px rgba(61,220,132,.18); }
+
+  .hero2 {
+    position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 30px; padding: 34px 38px; border-radius: 20px;
+    background: radial-gradient(600px 300px at 88% 50%, rgba(139,92,246,.28), transparent 70%),
+                radial-gradient(520px 280px at 12% 0%, rgba(34,211,238,.18), transparent 70%), #0c1220;
+    border: 1px solid #1f2b44; overflow: hidden;
+  }
+  .hero2::before { content: ""; position: absolute; inset: 0; opacity: .5; pointer-events: none;
+    background-image: linear-gradient(rgba(120,160,255,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(120,160,255,.07) 1px, transparent 1px);
+    background-size: 34px 34px; mask-image: radial-gradient(70% 90% at 80% 50%, #000, transparent); -webkit-mask-image: radial-gradient(70% 90% at 80% 50%, #000, transparent); }
+  .hero2-text, .orbwrap { position: relative; }
+  .livetag { display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+  .livetag i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .livetag.on { color: #ff4d6d; } .livetag.on i { box-shadow: 0 0 0 0 rgba(255,77,109,.6); animation: rec 1.6s infinite; }
+  .livetag.bad { color: var(--amber); }
+  @keyframes rec { 70%, 100% { box-shadow: 0 0 0 9px rgba(255,77,109,0); } }
+  .hero2 h2 { margin: 10px 0 8px; font-size: clamp(30px, 4.4vw, 46px); line-height: 1.05; font-weight: 800; letter-spacing: -.03em;
+    background: linear-gradient(100deg, #fff 30%, #9bdcff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hero2 .how { margin: 0 0 18px; color: #aab6cc; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .hero2 kbd { background: #1b2540; border-color: #34436b; }
+  .hero2 .gamebar { margin: 0 0 14px; }
+  .hero2 .chip { background: rgba(12,18,32,.7); backdrop-filter: blur(4px); }
+  .hero2 .err { margin: 8px 0 0; color: var(--red); font-size: 13.5px; } .hero2 .err:empty { display: none; }
+
+  .orbwrap { display: grid; place-items: center; padding: 6px 10px; }
+  .orb { position: relative; width: 190px; height: 190px; border-radius: 50%; border: 0; padding: 0; background: none; color: #fff; }
+  .orb-ring { position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(from 0deg, #22d3ee, #8b5cf6, #ff3d8b, #22d3ee);
+    filter: blur(14px); opacity: .7; animation: spin 6s linear infinite; }
+  .orb::before { content: ""; position: absolute; inset: -3px; border-radius: 50%; background: conic-gradient(from 0deg, #22d3ee, #8b5cf6, #ff3d8b, #22d3ee); animation: spin 6s linear infinite; }
+  .orb-core { position: absolute; inset: 3px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+    background: radial-gradient(circle at 50% 30%, #1d2a4c, #0a0f1d 75%); transition: transform .12s; }
+  .orb-core svg { width: 46px; height: 46px; color: var(--cyan); filter: drop-shadow(0 0 10px rgba(34,211,238,.8)); }
+  .orb-core b { font-size: 15px; letter-spacing: .02em; }
+  .orb:hover:not(:disabled) .orb-core { transform: scale(1.04); } .orb:active:not(:disabled) .orb-core { transform: scale(.96); }
+  .orb:disabled { cursor: default; }
+  .orb:disabled .orb-ring { animation: none; filter: grayscale(1) blur(14px); opacity: .2; }
+  .orb:disabled::before { animation: none; filter: grayscale(1); opacity: .35; }
+  .orb:disabled .orb-core svg { color: var(--dim); filter: none; } .orb:disabled .orb-core b { color: var(--muted); }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .rowhead h3 { font-size: 18px; }
+  #recent { display: grid; grid-template-columns: repeat(4, 1fr); grid-auto-rows: 1fr; gap: 14px; }
+  #recent .clip { position: relative; border-radius: 16px; border-color: #1f2b44; background: #0c1220; transition: transform .15s, box-shadow .2s, border-color .2s; }
+  #recent .clip:hover { transform: translateY(-3px); border-color: var(--cyan); box-shadow: 0 10px 34px rgba(34,211,238,.22); }
+  #recent .clip:first-child { grid-column: span 2; grid-row: span 2; }
+  #recent .shot { aspect-ratio: 16 / 9; height: 100%; }
+  #recent .clip:first-child .shot { aspect-ratio: auto; min-height: 100%; }
+  #recent .meta { position: absolute; left: 0; right: 0; bottom: 0; padding: 36px 14px 12px; background: linear-gradient(transparent, rgba(4,7,14,.92)); }
+  #recent .meta b { font-size: 15px; } #recent .clip:first-child .meta b { font-size: 21px; font-weight: 800; letter-spacing: -.01em; }
+  #recent .meta small { color: #aab6cc; }
+  #recent .shot::after { content: ""; position: absolute; left: 50%; top: 46%; width: 54px; height: 54px; margin: -27px 0 0 -27px; border-radius: 50%; opacity: 0; transition: opacity .15s;
+    background: rgba(8,12,22,.7) center / 22px no-repeat url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M8 5.5v13l11-6.5z' fill='%2322d3ee'/%3E%3C/svg%3E"); border: 1px solid var(--cyan); box-shadow: 0 0 22px rgba(34,211,238,.5); }
+  #recent .clip:hover .shot::after { opacity: 1; }
+  #recent .empty { grid-column: 1 / -1; }
+  .shot .new { background: var(--pink); color: #fff; box-shadow: 0 0 14px rgba(255,61,139,.6); }
+
+  @media (max-width: 1000px) { .hero2 { grid-template-columns: 1fr; } .orbwrap { order: -1; } #recent { grid-template-columns: 1fr 1fr; } }
+  @media (prefers-reduced-motion: reduce) { .orb-ring, .orb::before, .livetag.on i { animation: none; } }
 </style>
 </head>
 <body class="paused">
@@ -306,28 +376,29 @@
 <main id="main">
   <!-- HOME -->
   <section class="page on" id="page-home">
-    <div class="card hero">
-      <div class="hero-top">
-        <div>
-          <h2 id="headline">Starting the buffer…</h2>
-          <p class="how" id="how">Press <span class="keys" id="keys-home"></span> in any game to save it.</p>
+    <div class="hero2">
+      <div class="hero2-text">
+        <div class="livetag" id="livetag"><i></i><span id="livetext">Starting</span></div>
+        <h2 id="headline">Starting the buffer…</h2>
+        <p class="how" id="how">Press <span class="keys" id="keys-home"></span> in any game to save it.</p>
+        <div class="gamebar">
+          <span class="chip" id="gamechip"><i></i><span id="gametext">Looking for a game…</span></span>
+          <span class="chip" id="capchip"><small>Recording</small><span id="captext">Whole screen</span></span>
+          <span class="chip"><small>Encoder</small><span id="s-enc">–</span></span>
+          <span class="chip"><span id="s-fps">–</span></span>
+          <span class="chip"><small>Audio</small><span id="s-audio">–</span></span>
         </div>
-        <button class="btn primary savebtn" id="savebtn">
-          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="2"><path d="M4.5 7.5A6.5 6.5 0 1 1 3.5 10" stroke-linecap="round"/><path d="M2.6 5.2l2.4 2.6 2.4-2.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
-          <span>Save replay</span>
-        </button>
+        <p class="notice" id="notice"></p>
+        <p class="err" id="err"></p>
+        <button class="btn" id="togglebtn">Pause buffer</button>
       </div>
-      <div class="gamebar"><span class="chip" id="gamechip"><i></i><span id="gametext">Looking for a game…</span></span><span class="chip" id="capchip"><small>Recording</small><span id="captext">Whole screen</span></span></div>
-      <p class="notice" id="notice"></p>
-      <p class="err" id="err"></p>
-      <div class="tape" aria-hidden="true"><canvas id="tape"></canvas><div class="nowdot"></div></div>
-      <div class="stats">
-        <div class="stat"><small>Encoding with</small><b id="s-enc">–</b></div>
-        <div class="stat"><small>Frame rate</small><b id="s-fps">–</b></div>
-        <div class="stat"><small>Audio</small><b id="s-audio">–</b></div>
-        <div class="stat"><small>Capture check</small><b id="s-check">–</b></div>
-        <div class="stat"><small>Buffer on disk</small><b id="s-disk">–</b></div>
-        <div class="stat" style="margin-left:auto"><button class="btn" id="togglebtn">Pause buffer</button></div>
+      <div class="orbwrap">
+        <button class="orb" id="savebtn" aria-label="Save replay">
+          <span class="orb-ring"></span><span class="orb-core">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9A8 8 0 1 1 4 13"/><path d="M3 4.5L4.6 9l4.4-1.6"/><path d="M10.5 9.5v5l4.2-2.5z" fill="currentColor"/></svg>
+            <b>Save replay</b>
+          </span>
+        </button>
       </div>
     </div>
     <div class="rowhead"><h3>Recent replays</h3><button class="link" data-goto="clips">See all clips</button></div>
@@ -442,6 +513,20 @@
       </div>
     </div>
 
+    <div class="card" id="updates">
+      <div class="sect">Updates</div>
+      <p class="sect-note">Rewind updates itself. New versions come from the Rewind page on GitHub.</p>
+      <div class="gpu-line" id="upline"><i></i><div><b id="up-title">Rewind is up to date</b><small id="up-sub"></small></div></div>
+      <div class="set">
+        <div class="lbl"><b id="up-ver">Version</b><small id="up-notes">Checks for updates by itself every few hours.</small></div>
+        <button class="btn primary" id="upcheck">Check for updates</button>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Download updates automatically</b><small>New versions download in the background. You choose when to restart.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-autoupdate"><span></span></label>
+      </div>
+    </div>
+
     <div class="card">
       <div class="sect">App</div>
       <p class="sect-note">Rewind only records while it's running.</p>
@@ -546,9 +631,10 @@ function render() {
   $("sitebtn").hidden = !S.website;
   $("updatebtn").hidden = !S.update;
   if (S.update) $("updatebtn").textContent = S.update.ready ? `Restart to update to v${S.update.version}`
-    : S.update.auto ? `Downloading v${S.update.version}…` : `Get v${S.update.version}`;
-  $("updatebtn").disabled = !!(S.update && S.update.auto && !S.update.ready);
+    : S.update.downloading ? `Downloading v${S.update.version}…` : `Get v${S.update.version}`;
+  $("updatebtn").disabled = !!(S.update && S.update.downloading);
   $("footver").textContent = "Rewind v" + S.version;
+  renderUpdates();
 
   const pill = $("pill");
   pill.className = "pill " + ({ buffering: "", saving: "saving", error: "error" }[state] ?? "paused");
@@ -560,7 +646,6 @@ function render() {
   $("capchip").hidden = state !== "buffering" && state !== "saving";
   $("captext").textContent = st.capture_label;
   $("notice").textContent = st.notice || "";
-  $("s-check").textContent = !st.check ? "–" : st.check.black ? "Black frames" : "Picture OK";
 
   const full = st.buffered >= st.length - 0.6;
   let head;
@@ -571,6 +656,8 @@ function render() {
   else if (state === "starting" || !st.buffered) head = "Starting the buffer…";
   else head = full ? `Last ${fmtLen(st.length)} ready` : `Filling the buffer… ${clock(st.buffered)} of ${clock(st.length)}`;
   $("headline").textContent = head;
+  $("livetag").className = "livetag " + (state === "buffering" || state === "saving" ? "on" : state === "error" ? "bad" : "");
+  $("livetext").textContent = state === "buffering" ? "Recording" : state === "saving" ? "Saving" : state === "error" ? "Stopped" : state === "waiting" ? "Waiting for a game" : "Paused";
   $("err").textContent = st.error || (S.hotkey_ok ? "" : S.hotkey_error);
   $("how").innerHTML = state === "waiting"
     ? "The buffer starts by itself when a game opens. Change this in Settings, under Games."
@@ -581,15 +668,12 @@ function render() {
   $("s-enc").textContent = st.encoder_label;
   $("s-fps").textContent = st.fps + " fps";
   $("s-audio").textContent = st.audio ? [s.desktop_audio && "Game", s.mic && "Mic"].filter(Boolean).join(" + ") : "Off";
-  $("s-disk").textContent = st.disk_mb + " MB";
 
   $("navcount").textContent = S.clip_count || "";
   $("foot").textContent = state === "buffering"
     ? `Buffering · ${S.clip_count} clip${S.clip_count === 1 ? "" : "s"} saved`
     : state === "error" ? "Recording stopped" : state === "saving" ? "Saving replay" : state === "waiting" ? "Waiting for a game" : "Paused";
 
-  if (TAPE.levels !== st.levels.join()) { TAPE.levels = st.levels.join(); TAPE.data = st.levels; levelsStamp = performance.now(); }
-  TAPE.len = st.length; TAPE.buffered = st.buffered; TAPE.state = state; TAPE.audio = st.audio;
 
   for (const ev of S.events) {
     if (seenEvents.has(ev.id)) continue;
@@ -602,62 +686,6 @@ function render() {
   if (key !== settingsKey) { settingsKey = key; renderSettings(); }
 }
 
-/* ---------- the tape: the last N seconds, scrolling left */
-const TAPE = { data: [], levels: "", len: 30, buffered: 0, state: "", audio: true };
-function drawTape() {
-  const c = $("tape"), dpr = devicePixelRatio || 1;
-  const W = c.clientWidth, H = c.clientHeight;
-  if (!W) return requestAnimationFrame(drawTape);
-  if (c.width !== W * dpr) { c.width = W * dpr; c.height = H * dpr; }
-  const g = c.getContext("2d");
-  g.setTransform(dpr, 0, 0, dpr, 0, 0);
-  g.clearRect(0, 0, W, H);
-  const L = TAPE.len, mid = 66, live = TAPE.state === "buffering" || TAPE.state === "saving";
-  const x = (t) => W * (1 + t / L);        // t in seconds, -L .. 0
-
-  // recorded region
-  const b = Math.min(TAPE.buffered, L);
-  g.fillStyle = live ? "rgba(34,193,241,.06)" : "rgba(138,147,164,.05)";
-  g.fillRect(x(-b), 8, W - x(-b), mid * 2 - 16);
-  // not yet recorded: dashed baseline
-  g.strokeStyle = "#2a3242"; g.setLineDash([3, 5]); g.lineWidth = 1;
-  g.beginPath(); g.moveTo(0, mid); g.lineTo(x(-b), mid); g.stroke(); g.setLineDash([]);
-
-  // audio bars
-  const off = live && !reduced ? Math.min((performance.now() - levelsStamp) / 250, 2) : 0;
-  const n = TAPE.data.length, bw = Math.max(1.5, (W / (L * 4)) * 0.62);
-  g.fillStyle = live ? "#22c1f1" : "#4a5366";
-  if (TAPE.audio && n) {
-    for (let i = 0; i < n; i++) {
-      const t = -((n - 1 - i) + off) * 0.25;
-      if (t < -b) continue;
-      const h = Math.max(2, Math.sqrt(TAPE.data[i]) * (mid - 14));
-      const xx = x(t) - bw;
-      g.globalAlpha = 0.35 + 0.65 * Math.min(1, (t + L) / (L * 0.25));
-      g.fillRect(xx, mid - h, bw, h * 2);
-    }
-    g.globalAlpha = 1;
-  } else if (b > 0) {
-    g.fillRect(x(-b), mid - 1, W - x(-b), 2);
-  }
-
-  // ticks
-  const step = L <= 30 ? 5 : L <= 60 ? 10 : L <= 120 ? 20 : 60;
-  g.font = "11.5px 'Segoe UI', system-ui, sans-serif"; g.textBaseline = "top";
-  for (let t = -L; t <= 0; t += step) {
-    const xx = Math.round(x(t)) + 0.5;
-    g.strokeStyle = "#2a3242"; g.beginPath(); g.moveTo(xx, mid * 2 - 4); g.lineTo(xx, mid * 2 + 2); g.stroke();
-    g.fillStyle = "#6b7487";
-    g.textAlign = t === -L ? "left" : t === 0 ? "right" : "center";
-    const lab = t === 0 ? "now" : (Math.abs(t) >= 60 && Math.abs(t) % 60 === 0 ? `−${Math.abs(t) / 60}m` : `−${Math.abs(t)}s`);
-    g.fillText(lab, t === -L ? xx - 0.5 : xx, mid * 2 + 4);
-  }
-  // now line
-  g.fillStyle = live ? "#22c1f1" : "#4a5366"; g.fillRect(W - 2, 6, 2, mid * 2 - 12);
-  requestAnimationFrame(drawTape);
-}
-requestAnimationFrame(drawTape);
-
 /* ---------- actions */
 $("savebtn").addEventListener("click", async () => {
   $("savebtn").disabled = true;
@@ -665,7 +693,7 @@ $("savebtn").addEventListener("click", async () => {
 });
 $("togglebtn").addEventListener("click", () => api("/api/toggle"));
 $("sitebtn").addEventListener("click", () => api("/api/open-url", { url: S.website }));
-$("updatebtn").addEventListener("click", () => S.update.ready ? api("/api/update/apply") : api("/api/open-url", { url: S.update.url }));
+$("updatebtn").addEventListener("click", () => S.update.ready ? api("/api/update/apply") : S.update.auto ? api("/api/update/check") : api("/api/open-url", { url: S.update.url }));
 for (const id of ["openfolder", "openfolder3"]) $(id).addEventListener("click", () => api("/api/open-folder"));
 
 function toast(ev) {
@@ -703,7 +731,7 @@ async function loadClips() {
       <div class="meta"><b title="${esc(c.title)}">${esc(niceTitle(c.title))}</b><small>${when(c.mtime)} · ${c.size_mb} MB</small></div>
     </button>`;
   const empty = (S ? `<div class="empty"><b>No replays yet</b>Press ${keycaps(S.hotkey_label)} during a game, or use Save replay on Home.</div>` : "");
-  $("recent").innerHTML = clips.length ? clips.slice(0, 4).map(card).join("") : empty;
+  $("recent").innerHTML = clips.length ? clips.slice(0, 5).map(card).join("") : empty;
   $("allclips").innerHTML = clips.length ? shown.map(card).join("") : empty;
   $("clipsub").textContent = clips.length ? `${clips.length} replay${clips.length === 1 ? "" : "s"}, newest first` : "";
   document.querySelectorAll(".clip").forEach((el) => el.addEventListener("click", () => openPlayer(el.dataset.name)));
@@ -760,6 +788,24 @@ async function set(patch) {
   Object.assign(S.settings, patch);
   renderSettings();
   await api("/api/settings", patch);
+}
+
+function renderUpdates() {
+  const u = S.update, us = S.update_status || {}, line = $("upline");
+  $("opt-autoupdate").checked = S.settings.auto_update !== false;
+  $("opt-autoupdate").onchange = (e) => set({ auto_update: e.target.checked });
+  $("up-ver").textContent = "Rewind v" + S.version;
+  let title, sub = "", btn = "Check for updates", dis = false, cls = "";
+  if (us.state === "checking") { title = "Checking for updates…"; btn = "Checking…"; dis = true; }
+  else if (u && u.ready) { title = `Version ${u.version} is ready`; sub = "Restart Rewind to finish updating. Your buffer starts again right after."; btn = "Restart to update"; }
+  else if (u && u.downloading) { title = `Downloading version ${u.version}…`; sub = "You can keep playing. This only takes a moment."; btn = "Downloading…"; dis = true; }
+  else if (u) { title = `Version ${u.version} is available`; sub = u.auto ? "Press the button to download it." : "Opens the download page."; btn = u.auto ? "Download update" : "Get v" + u.version; }
+  else if (us.state === "error") { title = "Couldn't check for updates"; sub = us.error; cls = "cpu"; }
+  else { title = "Rewind is up to date"; sub = us.checked ? "Last checked " + new Date(us.checked * 1000).toLocaleString([], { dateStyle: "medium", timeStyle: "short" }) : ""; }
+  line.className = "gpu-line " + cls; $("up-title").textContent = title; $("up-sub").textContent = sub;
+  $("up-notes").textContent = u && u.notes ? u.notes.split(/\r?\n/).find((l) => l.trim()) || "" : "Checks for updates by itself every few hours.";
+  $("upcheck").textContent = btn; $("upcheck").disabled = dis;
+  $("upcheck").onclick = () => u && u.ready ? api("/api/update/apply") : u && !u.auto ? api("/api/open-url", { url: u.url }) : api("/api/update/check");
 }
 function renderSettings() {
   if (!S) return;

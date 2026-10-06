@@ -199,6 +199,35 @@
     .win-bar .stat { display: none; }
   }
   @media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } .card { transition: none; } }
+
+  /* neon / gamer */
+  :root { --violet: #8b5cf6; --pink: #ff3d8b; }
+  .hero::before { background: radial-gradient(closest-side, var(--glow), transparent 72%), radial-gradient(closest-side at 70% 40%, rgba(139,92,246,.16), transparent); }
+  .stage::before { background: linear-gradient(180deg, rgba(0,217,255,.7), rgba(139,92,246,.45) 50%, transparent 85%); }
+  .hold2 { position: relative; display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 20px; padding: 24px 28px; border-radius: 16px; overflow: hidden;
+    background: radial-gradient(360px 200px at 90% 50%, rgba(139,92,246,.3), transparent 70%), radial-gradient(320px 180px at 5% 0%, rgba(34,211,238,.18), transparent 70%), #0c1220; border: 1px solid #1f2b44; }
+  .hold2 .rec { display: inline-flex; align-items: center; gap: 7px; font-size: 10.5px; font-weight: 800; letter-spacing: .16em; color: #ff4d6d; }
+  .hold2 .rec i { width: 7px; height: 7px; border-radius: 50%; background: #ff4d6d; box-shadow: 0 0 10px #ff4d6d; }
+  .hold2 h4 { margin: 6px 0 4px; font-size: 30px; letter-spacing: -.03em; line-height: 1.05; font-weight: 800; background: linear-gradient(100deg, #fff 30%, #9bdcff); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  .hold2 p { margin: 0 0 14px; color: #aab6cc; font-size: 13px; }
+  .chips2 { display: flex; gap: 7px; flex-wrap: wrap; }
+  .chips2 span { font-size: 11px; font-weight: 600; padding: 4px 11px; border-radius: 99px; background: rgba(12,18,32,.8); border: 1px solid #2a3650; color: #c9d3e6; }
+  .hold2 .orb { width: 118px; height: 118px; border-radius: 50%; padding: 3px; background: conic-gradient(#22d3ee, #8b5cf6, #ff3d8b, #22d3ee); box-shadow: 0 0 40px rgba(139,92,246,.5); animation: spin 8s linear infinite; }
+  .hold2 .orb > div { width: 100%; height: 100%; border-radius: 50%; background: radial-gradient(circle at 50% 30%, #1d2a4c, #0a0f1d 75%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; animation: spin 8s linear infinite reverse; color: #fff; }
+  .hold2 .orb svg { width: 30px; height: 30px; color: #22d3ee; filter: drop-shadow(0 0 8px rgba(34,211,238,.8)); } .hold2 .orb b { font-size: 11px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .thumbs { grid-template-columns: repeat(4, 1fr); grid-template-rows: repeat(2, auto); }
+  .clip { position: relative; border-radius: 13px; border-color: #1f2b44; }
+  .clip img { height: 100%; }
+  .clip:first-child { grid-column: span 2; grid-row: span 2; }
+  .clip:nth-child(4) { grid-column: span 2; }
+  .clip:nth-child(4) img { aspect-ratio: 32/9; }
+  .clip > div { position: absolute; left: 0; right: 0; bottom: 0; padding: 28px 12px 9px; background: linear-gradient(transparent, rgba(4,7,14,.92)); }
+  .clip:first-child > div { font-size: 17px; font-weight: 800; }
+  .clip small { color: #aab6cc; }
+  .clip:first-child::before { content: "New"; position: absolute; left: 10px; top: 10px; z-index: 1; background: var(--pink); color: #fff; font-size: 11px; font-weight: 700; padding: 1px 9px; border-radius: 5px; box-shadow: 0 0 14px rgba(255,61,139,.6); }
+  @media (max-width: 960px) { .hold2 { grid-template-columns: 1fr; } .hold2 .orb { display: none; } .thumbs { grid-template-columns: 1fr 1fr; } .clip:first-child, .clip:nth-child(4) { grid-column: span 2; grid-row: auto; } .clip:nth-child(4) img { aspect-ratio: 16/9; } }
+  @media (prefers-reduced-motion: reduce) { .hold2 .orb, .hold2 .orb > div { animation: none; } }
 </style>
 </head>
 <body>
@@ -244,16 +273,20 @@
           <div class="app">
             <div class="side"><div class="on">Home</div><div>Clips <span>4</span></div><div class="sp"></div><div>Settings</div><div class="ver">Rewind v1.0.0</div></div>
             <div class="main-pane">
-              <div class="hold">
-                <div class="hold-top"><div><h4>Last 30 seconds ready</h4><p>Press <kbd>Alt</kbd> + <kbd>F8</kbd> in any game to save it.</p></div><div class="save">↺ Save replay</div></div>
-                <div class="tape" id="tape"></div>
-                <div class="ticks"><span>−30s</span><span>−20s</span><span>−10s</span><span>now</span></div>
+              <div class="hold2">
+                <div class="h2l">
+                  <span class="rec"><i></i>RECORDING</span>
+                  <h4>Last 30 seconds ready</h4>
+                  <p>Press <kbd>Alt</kbd> + <kbd>F8</kbd> in any game to save it.</p>
+                  <div class="chips2"><span>Playing Valorant</span><span>NVIDIA NVENC</span><span>60 fps</span><span>Game audio</span></div>
+                </div>
+                <div class="orb"><div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9A8 8 0 1 1 4 13"/><path d="M3 4.5L4.6 9l4.4-1.6"/><path d="M10.5 9.5v5l4.2-2.5z" fill="currentColor"/></svg><b>Save replay</b></div></div>
               </div>
               <div class="sec-h"><span>Recent replays</span><a href="#">See all clips</a></div>
               <div class="thumbs">
-                <div class="clip"><img src="game-roblox.jpg" width="960" height="540" loading="lazy" alt="Roblox gameplay"><div>Roblox<small>Today, 6:38 AM · 42 MB</small></div></div>
-                <div class="clip"><img src="game-fortnite.jpg" width="960" height="540" loading="lazy" alt="Fortnite gameplay"><div>Fortnite<small>Today, 6:37 AM · 38 MB</small></div></div>
                 <div class="clip"><img src="game-valorant.jpg" width="960" height="540" loading="lazy" alt="Valorant gameplay"><div>Valorant<small>Today, 6:37 AM · 45 MB</small></div></div>
+                <div class="clip"><img src="game-fortnite.jpg" width="960" height="540" loading="lazy" alt="Fortnite gameplay"><div>Fortnite<small>Today, 6:37 AM · 38 MB</small></div></div>
+                <div class="clip"><img src="game-roblox.jpg" width="960" height="540" loading="lazy" alt="Roblox gameplay"><div>Roblox<small>Today, 6:38 AM · 42 MB</small></div></div>
                 <div class="clip"><img src="game-rocket.jpg" width="960" height="540" loading="lazy" alt="Rocket League gameplay"><div>Rocket League<small>Today, 6:36 AM · 40 MB</small></div></div>
               </div>
             </div>
@@ -435,15 +468,6 @@
       document.getElementById("meta").textContent = `Version ${v} · Windows 10 / 11 (64-bit)${mb}`;
       document.getElementById("dl-sub").textContent = `Version ${v} · Windows 10 / 11 (64-bit)${mb}`;
     }).catch(() => {});
-  }
-
-  // sound-level bars in the app mock
-  const tape = document.getElementById("tape");
-  for (let i = 0; i < 64; i++) {
-    const b = document.createElement("i");
-    b.style.height = (18 + Math.abs(Math.sin(i * 1.7) * Math.cos(i * .53)) * 78) + "%";
-    b.style.opacity = i < 8 ? .45 + i * .07 : 1;
-    tape.appendChild(b);
   }
 
   // theme
