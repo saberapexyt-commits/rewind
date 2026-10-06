@@ -15,6 +15,16 @@ import engine
 
 NO_WINDOW = engine.NO_WINDOW
 
+MAX_SHARE_SECONDS = 600     # links and Discord-sized copies are for clips up to 10 minutes
+
+
+def check_length(path):
+    dur = engine.duration_of(path)
+    if dur > MAX_SHARE_SECONDS + 1:
+        raise RuntimeError(f"Sharing is limited to {MAX_SHARE_SECONDS // 60} minutes and this clip is {int(dur // 60)}:{int(dur % 60):02d}. "
+                           "Trim it in the editor and save a copy, then share that.")
+
+
 # Sizes people actually run into on Discord. Rewind aims a little under each one.
 DISCORD_SIZES = {"10": 10, "50": 50, "500": 500}
 
@@ -68,6 +78,7 @@ def plan_for_size(duration, target_mb, src_w, src_h):
 def make_discord_copy(src, target_mb):
     """Re-encode `src` next to itself so it is under target_mb. Returns the new path."""
     src = Path(src)
+    check_length(src)
     dur = engine.duration_of(src)
     r = engine.run([engine.FFPROBE, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
                     "-of", "csv=p=0", str(src)])

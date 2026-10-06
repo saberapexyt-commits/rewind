@@ -22,7 +22,7 @@ import games
 import share
 import winbits
 
-VERSION = "1.2.0"
+VERSION = "1.2.1"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = RES_DIR / "ui" / "index.html"
@@ -732,6 +732,7 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": False, "need_consent": True})
                 try:
                     src = APP.clip_path(body["name"])
+                    share.check_length(src)
                     tmp = None
                     if body.get("hours") == "forever" and src.stat().st_size > share.PERMANENT_MAX_MB * 1024 * 1024:
                         tmp = share.make_discord_copy(src, share.PERMANENT_MAX_MB - 12)   # the link gets a smaller copy

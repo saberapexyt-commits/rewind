@@ -1272,7 +1272,13 @@ pc.addEventListener("pointerup", () => { pdrag = null; });
 /* sharing */
 function shStat(msg, bad) { $("sh-stat").textContent = msg || ""; $("sh-stat").classList.toggle("bad", !!bad); }
 function closeShare() { $("sharemenu").hidden = true; $("sh-consent").hidden = true; }
-$("sharebtn").onclick = (e) => { e.stopPropagation(); $("sharemenu").hidden = !$("sharemenu").hidden; $("sh-out").hidden = true; shStat(""); };
+const SHARE_MAX = 600;
+function shareLimits() {
+  const long = V.dur > SHARE_MAX + 1;
+  document.querySelectorAll("#sh-size button, #sh-link").forEach((b) => b.disabled = long);
+  shStat(long ? `Sharing is limited to 10 minutes and this clip is ${clock(V.dur)}. Trim it and save a copy, then share that. Copying the file still works.` : "", long);
+}
+$("sharebtn").onclick = (e) => { e.stopPropagation(); $("sharemenu").hidden = !$("sharemenu").hidden; $("sh-out").hidden = true; shareLimits(); };
 $("sharemenu").addEventListener("click", (e) => e.stopPropagation());
 $("viewer").addEventListener("click", () => { if (!$("sharemenu").hidden) closeShare(); });
 $("sh-copy").onclick = async () => {
@@ -1288,7 +1294,7 @@ document.querySelectorAll("#sh-size button").forEach((b) => b.onclick = async ()
     if (r.ok) { shStat(`Done: ${r.size_mb} MB.${r.copied ? " It's copied, paste it with Ctrl+V." : ""}`); await loadClips(); }
     else shStat(r.error, true);
   } catch (e) { shStat("Rewind didn't respond.", true); }
-  btns.forEach((x) => x.disabled = false);
+  btns.forEach((x) => x.disabled = V.dur > SHARE_MAX + 1);
 });
 async function makeLink() {
   $("sh-consent").hidden = true; $("sh-link").disabled = true; shStat($("sh-hours").value === "forever" ? "Uploading… clips over 200 MB are shrunk first, which can take a minute." : "Uploading…");
@@ -1298,7 +1304,7 @@ async function makeLink() {
     else if (r.ok) { $("sh-url").value = r.url; $("sh-out").hidden = false; shStat("Link copied. It's ready to paste."); }
     else shStat(r.error || "The upload failed.", true);
   } catch (e) { shStat("Rewind didn't respond.", true); }
-  $("sh-link").disabled = false;
+  $("sh-link").disabled = V.dur > SHARE_MAX + 1;
 }
 $("sh-link").onclick = makeLink;
 $("sh-yes").onclick = async () => { await api("/api/share/consent"); makeLink(); };

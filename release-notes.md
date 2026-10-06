@@ -1,4 +1,3 @@
-- Every hotkey can be Tap or Long press (hold the key for 2 seconds), so a stray press won't clip or bookmark by accident.
-- Forever links now work for any clip length: a clip over 200 MB is shrunk to fit just for the link, and your original stays untouched.
+- Links and Discord-sized copies are limited to clips of 10 minutes or less. Longer ones can be trimmed and saved as a copy first. Copying the file has no limit.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.
