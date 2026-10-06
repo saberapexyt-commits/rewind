@@ -693,6 +693,7 @@ function build() {
   root.querySelectorAll("#ed-tabs button").forEach((b) => b.onclick = () => setTab(b.dataset.tab));
   root.querySelectorAll("#ed-win [data-w]").forEach((b) => b.onclick = () => api("/api/window/" + b.dataset.w));
   $("ed-scroll").addEventListener("pointerdown", scrollDown);
+  $("ed-scroll").addEventListener("contextmenu", (e) => e.preventDefault());
   $("ed-inner").addEventListener("click", innerClick);
   addEventListener("pointermove", dragMove); addEventListener("pointerup", dragEnd);
   cv.addEventListener("pointerdown", canvasDown);
@@ -808,6 +809,13 @@ function innerClick(e) {
   if (j) { E.sel = { kind: "j", id: j.dataset.join }; E.tab = "trans"; refreshAll(); const c = find("j", j.dataset.join); if (c) seek(Math.max(0, c.start - 0.3)); }
 }
 function scrollDown(e) {
+  if (e.button === 2) {                                  // right click or right drag anywhere on the timeline moves the playhead
+    if (e.target.closest(".ed-gut")) return;
+    E.drag = { type: "seek" };
+    if (E.playing) pause();
+    E.seekReq = xToT(e);
+    e.preventDefault(); return;
+  }
   if (e.button !== 0 || e.target.closest("[data-tg]") || e.target.closest("[data-join]") || e.target.closest(".ed-gut")) return;
   const item = e.target.closest(".ed-item");
   if (item) {
@@ -1176,7 +1184,7 @@ function modal(html) { $("ed-card").innerHTML = html; $("ed-modal").classList.ad
 function closeModal() { $("ed-modal").classList.remove("on"); }
 function shortcuts() {
   modal(`<h3>Keyboard shortcuts</h3><div class="ed-keys"><kbd>Space</kbd>Play or pause<kbd>S</kbd>Split at the playhead<kbd>Del</kbd>Delete the selected item<kbd>Ctrl + Z</kbd>Undo<kbd>Ctrl + Y</kbd>Redo<kbd>Ctrl + D</kbd>Duplicate
-    <kbd>← →</kbd>Step one frame<kbd>Shift + ← →</kbd>Step one second<kbd>Home / End</kbd>Jump to the start or end<kbd>Ctrl + wheel</kbd>Zoom the timeline</div>
+    <kbd>← →</kbd>Step one frame<kbd>Shift + ← →</kbd>Step one second<kbd>Home / End</kbd>Jump to the start or end<kbd>Ctrl + wheel</kbd>Zoom the timeline<kbd>Right click</kbd>Move the playhead to the cursor (drag to scrub)</div>
     <div class="ed-foot"><button class="ed-btn primary" id="k-ok">Got it</button></div>`);
   $("k-ok").onclick = closeModal;
 }

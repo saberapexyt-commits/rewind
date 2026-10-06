@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.2
+
+- **Right click moves the playhead in the editor.** Right click anywhere on the timeline to jump to that spot, or hold and drag to scrub.
+
 ## 1.5.1
 
 - **Add as many video layers as you like.** Press **+ Video** under the timeline for each one. A new video layer fills the whole screen until you resize or move it.
