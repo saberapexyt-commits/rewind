@@ -31,10 +31,11 @@ const TEXT_PRESETS = [["title", "Title", "Big and centred", "basic", { text: "Ti
   ["caption", "Caption box", "White text on a dark box", "basic", { text: "Caption", y: 88, size: 5, box: true, outline: false }],
   ["meme", "Meme text", "Impact with a black outline", "gaming", { text: "TOP TEXT", y: 12, size: 10, font: "impact", bold: false }],
   ["gold", "Gold callout", "Yellow impact for big moments", "gaming", { text: "CLUTCH!", y: 20, size: 11, font: "impact", bold: false, color: "#ffcc00" }]];
-const KIND_NAMES = { e: "Effect", l: "Filter", t: "Text", o: "Layer", v: "Main", a: "Audio" };
+const KIND_NAMES = { e: "Effect", l: "Filter", t: "Text", o: "Video", v: "Main", a: "Audio" };
+const ADD_NAMES = { o: "Video", t: "Text", e: "Effect", l: "Filter", a: "Audio" };
 const KEY_OF = { v: "video", o: "overlay", t: "text", e: "effect", l: "look", a: "audio" };
 const LANE_H = { e: 30, l: 30, t: 34, o: 54, v: 76, a: 38 };
-const GUT = 112;
+const GUT = 142;
 const I = (d, extra) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"${extra || ""}>${d}</svg>`;
 const ICON = {
   play: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M7 4.5v15l12-7.5z"/></svg>',
@@ -52,7 +53,7 @@ const ICON = {
 
 const DEF_TF = () => ({ scale: 100, x: 0, y: 0, rot: 0, opacity: 100 });
 const E = { P: null, sel: null, t: 0, total: 0, playing: false, zoom: 60, hist: [], hi: -1, meta: {}, name: "", tab: "media", cats: {}, itab: "video",
-  cur: 0, curI: -1, outI: -1, token: 0, busy: false, exported: false, audio: {}, ov: {}, ctx: null, gains: new WeakMap(), drag: null, seekReq: null,
+  pv: null, cur: 0, curI: -1, outI: -1, token: 0, busy: false, exported: false, audio: {}, ov: {}, ctx: null, gains: new WeakMap(), drag: null, seekReq: null,
   built: false, snd: { q: "", kind: "music", page: 1, results: [], more: false, loading: false, error: "", playing: -1, searched: false }, sfxIds: {}, prev: null, dnd: null, savedAt: null };
 const V = [document.createElement("video"), document.createElement("video")];
 V.forEach((v) => { v.playsInline = true; v.preload = "auto"; });
@@ -90,12 +91,30 @@ function newClip(src, inn, out) {
   return { id: uid(), src, in: inn, out, speed: 1, volume: 1, mute: false, filter: newFilter(), transform: DEF_TF(), fadeIn: 0, fadeOut: 0, transition: { type: "none", dur: 0.6 } };
 }
 function newOverlay(src, inn, out, start) {
-  return { id: uid(), src, in: inn, out, start, lane: 0, speed: 1, volume: 1, mute: false, x: 72, y: 28, scale: 36, rot: 0, opacity: 1, filter: newFilter(), fadeIn: 0, fadeOut: 0 };
+  return { id: uid(), src, in: inn, out, start, lane: 0, speed: 1, volume: 1, mute: false, x: 50, y: 50, scale: 100, rot: 0, opacity: 1, filter: newFilter(), fadeIn: 0, fadeOut: 0 };
 }
-function freeLane(kind, start, end, skipId) {
+/* Tracks are made on purpose with the Add track buttons. Items only ever go onto a track that exists. */
+function pickLane(kind, start, end, want, skipId) {
+  const n = E.P.tracks[kind] || 0, nm = ADD_NAMES[kind].toLowerCase();
+  if (!n) { toast({ kind: "error", message: `There's no ${nm} track yet. Press + ${ADD_NAMES[kind]} under the timeline to add one.` }); return null; }
+  if (want != null) return want;
   const used = listOf(kind).filter((x) => x.id !== skipId && x.start < end - 1e-6 && x.start + itemSpan(kind, x) > start + 1e-6).map((x) => x.lane || 0);
-  let l = 0; while (used.includes(l)) l++;
-  return l;
+  for (let l = 0; l < n; l++) if (!used.includes(l)) return l;
+  toast({ kind: "error", message: `Every ${nm} track is busy at that point. Press + ${ADD_NAMES[kind]} to add another one.` });
+  return null;
+}
+function trackHint(kind) {
+  return (E.P.tracks[kind] || 0) ? "" : `<p class="ed-hint warn">You need a ${ADD_NAMES[kind].toLowerCase()} track first. Press <b>+ ${ADD_NAMES[kind]}</b> under the timeline.</p>`;
+}
+function addTrack(kind) { E.P.tracks[kind] = (E.P.tracks[kind] || 0) + 1; commit(); const s = $("ed-scroll"); s.scrollTop = 0; }
+function removeTrack(kind, lane) {
+  const key = KEY_OF[kind];
+  E.P[key] = E.P[key].filter((x) => (x.lane || 0) !== lane);
+  E.P[key].forEach((x) => { if ((x.lane || 0) > lane) x.lane -= 1; });
+  for (const k of Object.keys(E.P.lanes)) if (k.startsWith(kind) && /^\d+$/.test(k.slice(1))) delete E.P.lanes[k];
+  E.P.tracks[kind] = Math.max(0, (E.P.tracks[kind] || 1) - 1);
+  if (E.sel && !selItem()) E.sel = null;
+  commit(); seek(E.t);
 }
 function locate(t) {
   const v = E.P.video; let i = 0;
@@ -387,6 +406,7 @@ function applyTimed() {
   const W = cv.width, H = cv.height;
   const active = (it, kind) => E.t >= it.start && E.t < it.start + it.dur && !laneFlag(kind + (it.lane || 0), "hidden");
   const ordered = [...E.P.look.filter((x) => active(x, "l")).map((x) => ["l", x]), ...E.P.effect.filter((x) => active(x, "e")).map((x) => ["e", x])];
+  if (E.pv) { const el = ((performance.now() - E.pv.t0) / 1000) % 1.6; ordered.push([E.pv.kind, { type: E.pv.type, intensity: 100, start: E.t - el, dur: 1e9, lane: 0 }]); }
   for (const [kind, it] of ordered) {
     const inten = clamp(it.intensity / 100, 0, 1), r = E.t - it.start;
     tx.clearRect(0, 0, W, H); tx.drawImage(cv, 0, 0);
@@ -530,7 +550,7 @@ function duplicateSel() {
   const it = selItem(); if (!it || E.sel.kind === "j") return;
   const k = E.sel.kind, b = JSON.parse(JSON.stringify(it)); b.id = uid();
   if (k === "v") { E.P.video.splice(E.P.video.indexOf(it) + 1, 0, b); b.transition = { type: "none", dur: 0.6 }; }
-  else { b.start = it.start + itemSpan(k, it); b.lane = freeLane(k, b.start, b.start + itemSpan(k, it)); listOf(k).push(b); }
+  else { b.start = it.start + itemSpan(k, it); b.lane = pickLane(k, b.start, b.start + itemSpan(k, it)); if (b.lane == null) return; listOf(k).push(b); }
   E.sel = { kind: k, id: b.id }; commit();
 }
 async function addClip(name, at) {
@@ -544,32 +564,41 @@ async function addClip(name, at) {
 }
 async function addOverlay(name, start, lane) {
   if (!E.P.video.length) { toast({ kind: "error", message: "Add a main clip first, then layer this on top." }); return; }
+  if (!(E.P.tracks.o || 0)) { pickLane("o", 0, 1); return; }
   try {
     const m = await loadMeta(name);
     const s0 = start != null ? start : E.t, o = newOverlay(name, 0, Math.min(m.dur, Math.max(1, E.total - s0)), s0);
-    o.lane = lane != null ? lane : freeLane("o", o.start, o.start + o.len);
-    E.P.overlay.push(o); E.sel = { kind: "o", id: o.id }; commit();
+    o.len = o.out - o.in;
+    const l = pickLane("o", o.start, o.start + o.len, lane); if (l == null) return;
+    o.lane = l;
+    const [W, H] = ASPECTS[E.P.aspect] || ASPECTS["16:9"];
+    o.scale = m.w && m.h ? clamp(Math.round(Math.min(100, 100 * H * m.w / (m.h * W))), 8, 100) : 100;     // full screen unless you change it
+    E.P.overlay.push(o); E.sel = { kind: "o", id: o.id }; E.itab = "video"; commit();
   } catch (e) { toast({ kind: "error", message: e.message }); }
 }
 function addText(preset, start, lane) {
   const s0 = start != null ? start : E.t;
   const t = Object.assign({ id: uid(), text: "Your text", start: s0, dur: Math.min(3, Math.max(1, E.total - s0 || 3)), lane: 0, x: 50, y: 80, size: 7, color: "#ffffff", font: "segoe", bold: true, outline: true, box: false }, preset || {});
-  t.lane = lane != null ? lane : freeLane("t", t.start, t.start + t.dur);
+  const l = pickLane("t", t.start, t.start + t.dur, lane); if (l == null) return;
+  t.lane = l;
   E.P.text.push(t); E.sel = { kind: "t", id: t.id }; commit();
 }
 function addTimed(kind, type, start, lane) {
   if (!E.P.video.length) { toast({ kind: "error", message: "Add a clip first, then put effects on it." }); return; }
   const s0 = start != null ? start : E.t, dur = Math.min(3, Math.max(0.8, E.total - s0));
   const it = { id: uid(), type, start: s0, dur, intensity: 100, lane: 0 };
-  it.lane = lane != null ? lane : freeLane(kind, it.start, it.start + it.dur);
+  const l = pickLane(kind, it.start, it.start + it.dur, lane); if (l == null) return;
+  it.lane = l; E.pv = null; phLabel();
   listOf(kind).push(it); E.sel = { kind, id: it.id }; commit();
 }
 async function addAudio(src, label, start, lane) {
+  if (!(E.P.tracks.a || 0)) { pickLane("a", 0, 1); return; }
   if (label) E.meta[src] = { ...(E.meta[src] || {}), label };
   const m = await loadMeta(src);
   const s0 = start != null ? start : E.t, room = E.total > 0 ? Math.max(1, E.total - s0) : m.dur;
   const a = { id: uid(), src, in: 0, out: Math.min(m.dur, room), start: s0, lane: 0, volume: 0.8, fadeIn: 0, fadeOut: 0 };
-  a.lane = lane != null ? lane : freeLane("a", a.start, a.start + (a.out - a.in));
+  const l = pickLane("a", a.start, a.start + (a.out - a.in), lane); if (l == null) return;
+  a.lane = l;
   E.P.audio.push(a); E.sel = { kind: "a", id: a.id }; commit();
 }
 async function addAudioFile() {
@@ -635,7 +664,8 @@ function build() {
         <button class="tb" id="ed-undo" title="Undo (Ctrl+Z)">${ICON.undo}</button><button class="tb" id="ed-redo" title="Redo (Ctrl+Y)">${ICON.redo}</button><span class="sep"></span>
         <button class="tb" id="ed-split" title="Split at the playhead (S)">${ICON.split}</button>
         <button class="tb" id="ed-dup" title="Duplicate (Ctrl+D)">${ICON.copy}</button>
-        <button class="tb" id="ed-del" title="Delete (Del)">${ICON.trash}</button>
+        <button class="tb" id="ed-del" title="Delete (Del)">${ICON.trash}</button><span class="sep"></span>
+        <span class="ed-small">Add track</span>${Object.entries(ADD_NAMES).map(([k, n]) => `<button class="ed-btn addtrack" data-addtrack="${k}" title="Add a ${n.toLowerCase()} track">+ ${n}</button>`).join("")}
         <span class="grow"></span>
         <span class="ed-small">Zoom</span><input type="range" id="ed-zoom" min="8" max="400" step="1"><button class="ed-btn" id="ed-fit" title="Fit the whole timeline">Fit</button>
       </div>
@@ -656,6 +686,7 @@ function build() {
   $("ed-title").oninput = (e) => { E.name = e.target.value; };
   $("ed-zoom").oninput = (e) => { E.zoom = Number(e.target.value); renderTimeline(); };
   $("ed-fit").onclick = fitZoom;
+  root.querySelectorAll("[data-addtrack]").forEach((b) => b.onclick = () => addTrack(b.dataset.addtrack));
   $("ed-ratio").onclick = (e) => { e.stopPropagation(); $("ed-pop").innerHTML = Object.keys(ASPECTS).map((a) => `<button data-a="${a}" class="${E.P.aspect === a ? "on" : ""}">${a}${a === "16:9" ? "  (landscape)" : a === "9:16" ? "  (Shorts, Reels, TikTok)" : a === "1:1" ? "  (square)" : "  (portrait)"}</button>`).join(""); $("ed-pop").classList.toggle("on");
     $("ed-pop").querySelectorAll("button").forEach((b) => b.onclick = () => { E.P.aspect = b.dataset.a; $("ed-pop").classList.remove("on"); commit(); }); };
   root.addEventListener("click", () => $("ed-pop").classList.remove("on"));
@@ -699,7 +730,6 @@ function fitZoom() { const s = $("ed-scroll"); E.zoom = clamp((s.clientWidth - G
 function scrollToPlayhead() { const s = $("ed-scroll"), x = E.t * E.zoom; if (x > s.scrollLeft + s.clientWidth - GUT - 40 || x < s.scrollLeft) s.scrollLeft = Math.max(0, x - 80); }
 
 const thumbOf = (src) => src.startsWith("ext:") ? "" : `/thumb/${encodeURIComponent(src)}`;
-function maxLane(kind) { return Math.max(-1, ...listOf(kind).map((x) => x.lane || 0)); }
 function renderTimeline() {
   const s = $("ed-scroll"), inner = $("ed-inner"), z = E.zoom;
   $("ed-zoom").value = z;
@@ -714,33 +744,29 @@ function renderTimeline() {
     ruler += big ? `<span style="left:${GUT + t * z}px">${fmt(t).replace(/\.0$/, "")}</span><i class="big" style="left:${GUT + t * z}px"></i>` : `<i style="left:${GUT + t * z}px"></i>`;
   }
   const selc = (id) => E.sel && E.sel.id === id ? " sel" : "";
-  const dragging = E.drag && E.drag.moved ? E.drag.kind : null;
-  const dnd = E.dnd ? E.dnd.kind : null;
   let h = `<div class="ed-ruler" id="ed-ruler" style="width:${GUT + width}px"><span class="corner"></span>${ruler}</div>`;
   const gut = (kind, lane, label) => {
     const key = kind === "v" ? "main" : kind + lane;
     const hid = laneFlag(key, "hidden"), mut = laneFlag(key, "muted");
     const eye = kind !== "a", spk = kind === "v" || kind === "o" || kind === "a";
-    return `<div class="ed-gut"><span>${label}</span><span class="gt">${eye ? `<button data-tg="hidden" data-key="${key}" class="${hid ? "off" : ""}" title="${hid ? "Show" : "Hide"} this track">${ICON.eye}</button>` : ""}${spk ? `<button data-tg="muted" data-key="${key}" class="${mut ? "off" : ""}" title="${mut ? "Unmute" : "Mute"} this track">${ICON.spk}</button>` : ""}</span></div>`;
+    const rm = kind !== "v" ? `<button data-rmtrack="${kind}" data-lane="${lane}" title="Remove this track${listOf(kind).some((x) => (x.lane || 0) === lane) ? " and what's on it" : ""}">${ICON.trash}</button>` : "";
+    return `<div class="ed-gut"><span>${label}</span><span class="gt">${eye ? `<button data-tg="hidden" data-key="${key}" class="${hid ? "off" : ""}" title="${hid ? "Show" : "Hide"} this track">${ICON.eye}</button>` : ""}${spk ? `<button data-tg="muted" data-key="${key}" class="${mut ? "off" : ""}" title="${mut ? "Unmute" : "Mute"} this track">${ICON.spk}</button>` : ""}${rm}</span></div>`;
   };
-  const groupRows = (kind, hint) => {
-    const items = listOf(kind), top = Math.max(0, maxLane(kind)) + ((dragging === kind || dnd === kind) ? 1 : 0);
+  const groupRows = (kind) => {
+    const items = listOf(kind), n = E.P.tracks[kind] || 0;
     let out = "";
-    if (!items.length && dragging !== kind && dnd !== kind) {
-      return `<div class="ed-lane" data-kind="${kind}" data-lane="0" style="width:${GUT + width}px;height:26px">${gut(kind, 0, KIND_NAMES[kind])}<div class="ed-bg" style="opacity:.5"></div><div class="ed-empty">${hint}</div></div>`;
-    }
-    for (let lane = top; lane >= 0; lane--) {
-      const label = lane === 0 && top === 0 ? KIND_NAMES[kind] : `${KIND_NAMES[kind]} ${lane + 1}`;
+    for (let lane = n - 1; lane >= 0; lane--) {
+      const label = n === 1 ? KIND_NAMES[kind] : `${KIND_NAMES[kind]} ${lane + 1}`;
       out += `<div class="ed-lane" data-kind="${kind}" data-lane="${lane}" style="width:${GUT + width}px;height:${LANE_H[kind]}px">${gut(kind, lane, label)}<div class="ed-bg"></div>`;
       for (const it of items.filter((x) => (x.lane || 0) === lane)) out += itemHtml(kind, it, z, selc(it.id));
       out += `</div>`;
     }
     return out;
   };
-  h += groupRows("e", "Drag an effect here");
-  h += groupRows("l", "Drag a filter here");
-  h += groupRows("t", "Text appears here");
-  h += groupRows("o", "Layers sit above the main clip");
+  h += groupRows("e");
+  h += groupRows("l");
+  h += groupRows("t");
+  h += groupRows("o");
   h += `<div class="ed-lane" data-kind="v" data-lane="0" style="width:${GUT + width}px;height:${LANE_H.v}px">${gut("v", 0, "Main")}<div class="ed-bg"></div>`;
   if (!E.P.video.length) h += `<div class="ed-empty">Add a clip from the Media tab</div>`;
   E.P.video.forEach((c, i) => {
@@ -753,9 +779,10 @@ function renderTimeline() {
     }
   });
   h += `</div>`;
-  h += groupRows("a", "Music and sounds appear here");
+  h += groupRows("a");
   h += `<div class="ed-playhead" id="ed-ph" style="height:100%"></div>`;
   inner.innerHTML = h;
+  inner.querySelectorAll("[data-rmtrack]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); removeTrack(b.dataset.rmtrack, Number(b.dataset.lane)); });
   inner.querySelectorAll("[data-tg]").forEach((b) => b.onclick = (e) => { e.stopPropagation(); const k = b.dataset.key; E.P.lanes[k] = E.P.lanes[k] || {}; E.P.lanes[k][b.dataset.tg] = !E.P.lanes[k][b.dataset.tg]; commit(); });
   updatePlayhead();
 }
@@ -790,12 +817,13 @@ function scrollDown(e) {
     E.drag = { type: h ? "trim" + h : "move", kind, id, x0: e.clientX, snap: JSON.parse(JSON.stringify(it)), moved: false };
     e.preventDefault(); return;
   }
-  if (e.target.closest(".ed-ruler") || e.target.closest(".ed-lane")) {
-    E.sel = null; renderInspector(); renderTimelineSel(); renderLeft();
+  if (e.target.closest(".ed-ruler")) {                  // only the ruler moves the playhead, so grabbing a clip never does
     E.drag = { type: "seek" };
     if (E.playing) pause();
     E.seekReq = xToT(e);
     e.preventDefault();
+  } else if (e.target.closest(".ed-lane")) {
+    E.sel = null; renderInspector(); renderTimelineSel(); renderLeft();
   }
 }
 function renderTimelineSel() {
@@ -913,7 +941,17 @@ function makeDraggable(el, payload) {
 }
 
 /* ------------------------------------------------------------ left panel */
-function setTab(t) { E.tab = t; renderLeft(); }
+function phLabel() {
+  const ph = document.querySelector("#ed .ed-ph"); if (!ph) return;
+  const l = E.pv && (E.pv.kind === "e" ? effOf : lookOf)(E.pv.type);
+  ph.textContent = l ? `Previewing ${l[1]}. Drag it down onto the ${E.pv.kind === "e" ? "Effect" : "Filter"} track to add it.` : "Player";
+  ph.classList.toggle("pv", !!l);
+}
+function setPreview(kind, type) {
+  E.pv = E.pv && E.pv.kind === kind && E.pv.type === type ? null : { kind, type, t0: performance.now() };
+  phLabel(); renderLeft();
+}
+function setTab(t) { if (E.pv) { E.pv = null; phLabel(); } E.tab = t; renderLeft(); }
 const CATS = { media: [["all", "All clips"], ["rec", "Recordings"], ["edits", "Your edits"]], audio: [["sfx", "Sound effects"], ["music", "Free music"], ["online", "Free sounds"], ["files", "Your files"], ["clips", "From clips"]],
   text: [["all", "All"], ["basic", "Basic"], ["gaming", "Gaming"]], effects: EF_CATS, trans: TR_CATS, filters: LK_CATS };
 const libClips = () => (typeof clips !== "undefined" ? clips : []);
@@ -931,23 +969,23 @@ function renderPane(cat) {
   if (E.tab === "media") {
     let list = libClips();
     if (cat === "rec") list = list.filter((c) => /recording/i.test(c.title)); else if (cat === "edits") list = list.filter((c) => c.name.startsWith("Edits/"));
-    p.innerHTML = `<div class="ed-media">${list.map(tileMedia).join("") || '<p class="ed-hint">Nothing here yet.</p>'}</div>
+    p.innerHTML = `${(E.P.tracks.o || 0) ? "" : '<p class="ed-hint" style="margin:0 0 8px">Clips you click go on the Main track. For picture-in-picture or stacked video, press <b>+ Video</b> under the timeline, then use the layer button on a clip.</p>'}<div class="ed-media">${list.map(tileMedia).join("") || '<p class="ed-hint">Nothing here yet.</p>'}</div>
       <p class="ed-hint">Click a clip to add it, or drag it onto the timeline. The layer button puts it on top as a picture-in-picture.</p>`;
     p.querySelectorAll(".ed-mi").forEach((b) => { b.onclick = (ev) => { if (ev.target.closest("[data-pip]")) addOverlay(b.dataset.name); else addClip(b.dataset.name); }; makeDraggable(b, { kind: "media", name: b.dataset.name }); });
   } else if (E.tab === "text") {
-    p.innerHTML = `<div class="ed-tpl">${TEXT_PRESETS.filter((x) => cat === "all" || x[3] === cat).map(([id, n, d]) => `<button data-p="${id}"><b>${n}</b><small>${d}</small></button>`).join("")}</div>
+    p.innerHTML = `${trackHint("t")}<div class="ed-tpl">${TEXT_PRESETS.filter((x) => cat === "all" || x[3] === cat).map(([id, n, d]) => `<button data-p="${id}"><b>${n}</b><small>${d}</small></button>`).join("")}</div>
       <p class="ed-hint">Click to add at the playhead, or drag onto the Text track. Drag the text in the preview to place it.</p>`;
     p.querySelectorAll("[data-p]").forEach((b) => { const pr = TEXT_PRESETS.find((x) => x[0] === b.dataset.p)[4]; b.onclick = () => addText({ ...pr }); makeDraggable(b, { kind: "text", preset: { ...pr } }); });
   } else if (E.tab === "effects") {
-    const act = E.sel && E.sel.kind === "e" ? selItem() : null;
-    p.innerHTML = `<div class="ed-media">${EFFECTS.filter((x) => cat === "all" || x[2] === cat).map(([id, n, , g]) => `<button class="ed-fx${act && act.type === id ? " on" : ""}" data-fx="${id}"><div class="th" style="background-image:url('${src}')"><em class="add">+</em><i>${g}</i></div><b>${n}</b></button>`).join("")}</div>
-      <p class="ed-hint">Effects play for a stretch of the timeline only. Click one to add it at the playhead, or drag it onto the Effect track, then drag its edges to set how long it lasts.</p>`;
-    p.querySelectorAll("[data-fx]").forEach((b) => { b.onclick = () => { if (act) { act.type = b.dataset.fx; commit(); } else addTimed("e", b.dataset.fx); }; makeDraggable(b, { kind: "effect", type: b.dataset.fx }); });
+    const pv = E.pv && E.pv.kind === "e" ? E.pv.type : null;
+    p.innerHTML = `${trackHint("e")}<div class="ed-media">${EFFECTS.filter((x) => cat === "all" || x[2] === cat).map(([id, n, , g]) => `<button class="ed-fx${pv === id ? " on" : ""}" data-fx="${id}"><div class="th" style="background-image:url('${src}')"><em class="add" data-add title="Add at the playhead">+</em><i>${g}</i></div><b>${n}</b></button>`).join("")}</div>
+      <p class="ed-hint">Click an effect to preview it on the player. Drag it down onto an Effect track to add it, then drag the bar left or right to move it, or pull its edges to set how long it lasts.</p>`;
+    p.querySelectorAll("[data-fx]").forEach((b) => { b.onclick = (ev) => { if (ev.target.closest("[data-add]")) addTimed("e", b.dataset.fx); else setPreview("e", b.dataset.fx); }; makeDraggable(b, { kind: "effect", type: b.dataset.fx }); });
   } else if (E.tab === "filters") {
-    const act = E.sel && E.sel.kind === "l" ? selItem() : null;
-    p.innerHTML = `<div class="ed-media">${LOOKS.filter((x) => cat === "all" || x[2] === cat).map(([id, n, , css]) => `<button class="ed-fx${act && act.type === id ? " on" : ""}" data-lk="${id}"><div class="th" style="background-image:url('${src}');filter:${css}"><em class="add">+</em></div><b>${n}</b></button>`).join("")}</div>
-      <p class="ed-hint">A filter colours a stretch of the timeline. Click one to add it at the playhead, or drag it onto the Filter track.</p>`;
-    p.querySelectorAll("[data-lk]").forEach((b) => { b.onclick = () => { if (act) { act.type = b.dataset.lk; commit(); } else addTimed("l", b.dataset.lk); }; makeDraggable(b, { kind: "look", type: b.dataset.lk }); });
+    const pv = E.pv && E.pv.kind === "l" ? E.pv.type : null;
+    p.innerHTML = `${trackHint("l")}<div class="ed-media">${LOOKS.filter((x) => cat === "all" || x[2] === cat).map(([id, n, , css]) => `<button class="ed-fx${pv === id ? " on" : ""}" data-lk="${id}"><div class="th" style="background-image:url('${src}');filter:${css}"><em class="add" data-add title="Add at the playhead">+</em></div><b>${n}</b></button>`).join("")}</div>
+      <p class="ed-hint">Click a filter to preview it on the player. Drag it down onto a Filter track to add it, then drag the bar left or right to move it, or pull its edges to set how long it lasts.</p>`;
+    p.querySelectorAll("[data-lk]").forEach((b) => { b.onclick = (ev) => { if (ev.target.closest("[data-add]")) addTimed("l", b.dataset.lk); else setPreview("l", b.dataset.lk); }; makeDraggable(b, { kind: "look", type: b.dataset.lk }); });
   } else if (E.tab === "trans") {
     const c = E.sel && (E.sel.kind === "j" || E.sel.kind === "v") ? find("v", E.sel.id) : null;
     const cur = c && c.transition ? c.transition.type : "none";
@@ -960,7 +998,7 @@ function renderPane(cat) {
 function renderAudioPane(p, cat) {
   const s = E.snd;
   if (cat === "sfx") {
-    p.innerHTML = `<div class="ed-sfx">${SFX.map(([id, name]) => `<div class="ed-snd" data-sfx="${id}"><button class="pl" data-pv title="Preview">▶</button><b>${name}</b><button class="ad" data-add title="Add to the timeline">+</button></div>`).join("")}</div>
+    p.innerHTML = `${trackHint("a")}<div class="ed-sfx">${SFX.map(([id, name]) => `<div class="ed-snd" data-sfx="${id}"><button class="pl" data-pv title="Preview">▶</button><b>${name}</b><button class="ad" data-add title="Add to the timeline">+</button></div>`).join("")}</div>
       <p class="ed-hint">Built in and free. Click + to add at the playhead, or drag onto an Audio track.</p>`;
     p.querySelectorAll("[data-sfx]").forEach((row) => {
       row.querySelector("[data-add]").onclick = async () => { const id = await sfxId(row.dataset.sfx); if (id) addAudio(id.id, id.name).catch((e) => toast({ kind: "error", message: e.message })); };
@@ -1145,7 +1183,7 @@ function shortcuts() {
 function cleanProject() {
   const strip = (o) => { const c = JSON.parse(JSON.stringify(o)); delete c._bb; delete c.len; return c; };
   const P = E.P;
-  return { aspect: P.aspect, fit: P.fit, lanes: P.lanes,
+  return { aspect: P.aspect, fit: P.fit, lanes: P.lanes, tracks: P.tracks,
     video: P.video.map((o) => { const c = strip(o); delete c.start; delete c.ov; return c; }),
     overlay: P.overlay.map(strip), text: P.text.map(strip), effect: P.effect.map(strip), look: P.look.map(strip), audio: P.audio.map(strip) };
 }
@@ -1206,7 +1244,7 @@ function keys(e) {
   else if (e.key === "End") { seek(E.total); }
   else if (e.key === "Escape") { hide(); }
 }
-function freshProject() { return { aspect: "16:9", fit: "fit", video: [], overlay: [], text: [], effect: [], look: [], audio: [], lanes: {} }; }
+function freshProject() { return { aspect: "16:9", fit: "fit", video: [], overlay: [], text: [], effect: [], look: [], audio: [], lanes: {}, tracks: { o: 0, t: 0, e: 0, l: 0, a: 0 } }; }
 function normalise(P) { for (const k of ["video", "overlay", "text", "effect", "look", "audio"]) P[k] = P[k] || []; P.lanes = P.lanes || {}; return P; }
 function show() {
   build();

@@ -30,6 +30,13 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.1
+
+- **Add as many video layers as you like.** Press **+ Video** under the timeline for each one. A new video layer fills the whole screen until you resize or move it.
+- **You choose your tracks.** Tracks no longer appear on their own: press **+ Video**, **+ Text**, **+ Effect**, **+ Filter** or **+ Audio** to add one, and the bin button on a track removes it.
+- **Grabbing a clip no longer moves the playhead.** Only the ruler at the top moves it.
+- **Effects and filters: click to preview, drag to add.** Click one to see it on the player, drag it down onto its track to add it, then drag the bar left or right to move it or pull its edges to change how long it lasts.
+
 ## 1.5.0
 
 - **The video editor is rebuilt like CapCut.** Real tracks: Effect, Filter, Text, Layer, Main and Audio, each with its own show/hide and mute button, and extra tracks appear when items overlap. Drag things between tracks, trim them from either edge, and zoom or fit the timeline.

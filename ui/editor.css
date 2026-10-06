@@ -127,13 +127,13 @@
 .ed-ruler span { position: absolute; top: 4px; font-size: 10.5px; color: #8e8e99; transform: translateX(-50%); pointer-events: none; font-variant-numeric: tabular-nums; }
 .ed-ruler span:first-child { transform: none; margin-left: 3px; }
 .ed-ruler i { position: absolute; bottom: 0; width: 1px; height: 5px; background: #3a3a43; pointer-events: none; } .ed-ruler i.big { height: 10px; background: #5a5a66; }
-.ed-ruler .corner { position: sticky; left: 0; top: 0; width: 112px; height: 100%; background: #151517; z-index: 3; border-right: 1px solid #202024; display: block; }
+.ed-ruler .corner { position: sticky; left: 0; top: 0; width: 142px; height: 100%; background: #151517; z-index: 3; border-right: 1px solid #202024; display: block; }
 .ed-lane { position: relative; margin-top: 4px; }
 .ed-lane.drop { outline: 2px dashed #3d8bff; outline-offset: -2px; border-radius: 6px; }
-.ed-gut { position: sticky; left: 0; z-index: 6; width: 112px; height: 100%; background: #151517; border-right: 1px solid #202024; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 10px; color: #8e8e99; font-size: 11px; font-weight: 600; }
+.ed-gut { position: sticky; left: 0; z-index: 6; width: 142px; height: 100%; background: #151517; border-right: 1px solid #202024; display: flex; align-items: center; justify-content: space-between; padding: 0 8px 0 10px; color: #8e8e99; font-size: 11px; font-weight: 600; }
 .ed-gut .gt { display: flex; gap: 2px; } .ed-gut button { width: 22px; height: 22px; border: 0; background: none; color: #8e8e99; border-radius: 5px; display: grid; place-items: center; padding: 0; } .ed-gut button:hover { background: #26262b; color: #fff; } .ed-gut button.off { color: #ff7b8c; }
 .ed-gut button svg { width: 14px; height: 14px; }
-.ed-bg { position: absolute; left: 112px; right: 0; top: 0; bottom: 0; background: #1a1a1d; border-radius: 6px; }
+.ed-bg { position: absolute; left: 142px; right: 0; top: 0; bottom: 0; background: #1a1a1d; border-radius: 6px; }
 .ed-empty { position: absolute; left: 124px; top: 0; bottom: 0; display: flex; align-items: center; color: #4a4a52; font-size: 11.5px; pointer-events: none; white-space: nowrap; }
 .ed-item { position: absolute; top: 2px; bottom: 2px; border-radius: 6px; overflow: hidden; border: 2px solid transparent; cursor: grab; display: flex; align-items: center; z-index: 2; }
 .ed-item.sel { border-color: #fff; z-index: 4; } .ed-item.off { opacity: .35; }
@@ -161,3 +161,8 @@
 .ed-foot { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
 .ed-keys { display: grid; grid-template-columns: auto 1fr; gap: 6px 16px; font-size: 12.5px; } .ed-keys kbd { background: #2a2a31; border-radius: 5px; padding: 1px 8px; font-weight: 700; font-size: 11.5px; font-family: inherit; justify-self: start; }
 @media (max-width: 1250px) { #ed { grid-template-columns: 360px minmax(0, 1fr) 280px; } }
+.ed-hint.warn { color: #f2b84b; margin: 0 0 10px; }
+.ed-tlbar .addtrack { height: 26px; padding: 0 9px; font-size: 12px; }
+.ed-tlbar { overflow-x: auto; }
+.ed-fx.on .th { outline: 2px solid #3d8bff; outline-offset: -2px; }
+.ed-ph.pv { color: #7db4ff; }
