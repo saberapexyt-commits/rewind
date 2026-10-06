@@ -1,4 +1,4 @@
-- **Start with Windows.** A new switch in Settings opens Rewind in the tray when you sign in, so you never miss a clip after a restart.
-- **Sound waveforms in the editor.** Video and sound clips on the timeline now show their audio, so you can line a cut up with a loud moment.
+- **Fixes dragging in the editor.** Once a clip, effect, text or sound was selected, you couldn't grab it again to move it or pull its edges, and pressing on it moved the playhead instead. A style meant for the clip player's trim box was also applying to selected timeline items. They're separate now.
+- **Transitions rebuilt.** "Zoom in" came out as a flat solid colour in the exported video, so it's gone (old projects that used it get a fade). "Dip to black" and "Dissolve" in the preview now look like what the export makes. New: Dip to white, Soft wipe left and right, Slide up and down, and Pixelate. The animated previews on the tiles match each transition.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.

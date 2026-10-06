@@ -64,11 +64,19 @@
 @keyframes ed-tp-sr { 0%, 15% { transform: translateX(-100%) } 60%, 100% { transform: none } }
 @keyframes ed-tp-co { 0%, 15% { clip-path: circle(0% at 50% 50%) } 60%, 100% { clip-path: circle(80% at 50% 50%) } }
 @keyframes ed-tp-cc { 0%, 15% { clip-path: circle(80% at 50% 50%) } 60%, 100% { clip-path: circle(0% at 50% 50%) } }
-@keyframes ed-tp-zi { 0%, 15% { transform: scale(.2); opacity: 0 } 60%, 100% { transform: none; opacity: 1 } }
-.ed-tr .tp-fade::after, .ed-tr .tp-dissolve::after { animation-name: ed-tp-fade; } .ed-tr .tp-fadeblack::after { background: #000; animation-name: ed-tp-fade; }
+@keyframes ed-tp-su { 0%, 15% { transform: translateY(100%) } 60%, 100% { transform: none } }
+@keyframes ed-tp-sd { 0%, 15% { transform: translateY(-100%) } 60%, 100% { transform: none } }
+@keyframes ed-tp-sml { 0%, 15% { -webkit-mask-position: 0 0; mask-position: 0 0 } 70%, 100% { -webkit-mask-position: 100% 0; mask-position: 100% 0 } }
+@keyframes ed-tp-fb { 0%, 10% { background: #000; opacity: 0 } 40% { background: #000; opacity: 1 } 41% { background: linear-gradient(135deg, #ff7a59, #ffd23f); opacity: 1 } 75%, 100% { background: linear-gradient(135deg, #ff7a59, #ffd23f); opacity: 1 } }
+@keyframes ed-tp-fw { 0%, 10% { background: #fff; opacity: 0 } 40% { background: #fff; opacity: 1 } 41% { background: linear-gradient(135deg, #ff7a59, #ffd23f); opacity: 1 } 75%, 100% { background: linear-gradient(135deg, #ff7a59, #ffd23f); opacity: 1 } }
+@keyframes ed-tp-px { 0%, 15% { opacity: 0; filter: blur(0) } 35% { opacity: .6; filter: contrast(2) saturate(2) } 60%, 100% { opacity: 1; filter: none } }
+.ed-tr .tp-fade::after, .ed-tr .tp-dissolve::after { animation-name: ed-tp-fade; } .ed-tr .tp-fadeblack::after { animation-name: ed-tp-fb; } .ed-tr .tp-fadewhite::after { animation-name: ed-tp-fw; }
+.ed-tr .tp-slideup::after { animation-name: ed-tp-su; } .ed-tr .tp-slidedown::after { animation-name: ed-tp-sd; } .ed-tr .tp-pixelize::after { animation-name: ed-tp-px; animation-timing-function: steps(6); }
+.ed-tr .tp-smoothleft::after { -webkit-mask-image: linear-gradient(90deg, transparent 33%, #000 66%); mask-image: linear-gradient(90deg, transparent 33%, #000 66%); -webkit-mask-size: 300% 100%; mask-size: 300% 100%; animation-name: ed-tp-sml; }
+.ed-tr .tp-smoothright::after { -webkit-mask-image: linear-gradient(270deg, transparent 33%, #000 66%); mask-image: linear-gradient(270deg, transparent 33%, #000 66%); -webkit-mask-size: 300% 100%; mask-size: 300% 100%; animation-name: ed-tp-sml; }
 .ed-tr .tp-wipeleft::after { animation-name: ed-tp-wl; } .ed-tr .tp-wiperight::after { animation-name: ed-tp-wr; } .ed-tr .tp-wipeup::after { animation-name: ed-tp-wu; } .ed-tr .tp-wipedown::after { animation-name: ed-tp-wd; }
 .ed-tr .tp-slideleft::after { animation-name: ed-tp-sl; } .ed-tr .tp-slideright::after { animation-name: ed-tp-sr; }
-.ed-tr .tp-circleopen::after { animation-name: ed-tp-co; } .ed-tr .tp-circleclose::after { animation-name: ed-tp-cc; } .ed-tr .tp-zoomin::after { animation-name: ed-tp-zi; }
+.ed-tr .tp-circleopen::after { animation-name: ed-tp-co; } .ed-tr .tp-circleclose::after { animation-name: ed-tp-cc; }
 .ed-sfx { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
 .ed-snd { display: flex; align-items: center; gap: 8px; background: #1b1b1f; border-radius: 8px; padding: 6px 8px; min-width: 0; cursor: grab; }
 .ed-snd b { flex: 1; min-width: 0; font-size: 12px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

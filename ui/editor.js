@@ -7,9 +7,11 @@ const FONTS = { segoe: "'Segoe UI', sans-serif", arial: "Arial, sans-serif", imp
   georgia: "Georgia, serif", consolas: "Consolas, monospace", comic: "'Comic Sans MS', cursive" };
 const FONT_NAMES = { segoe: "Segoe UI", arial: "Arial", impact: "Impact", black: "Arial Black", georgia: "Georgia", consolas: "Consolas", comic: "Comic Sans" };
 /* [id, label, category] */
-const TRANSITIONS = [["fade", "Fade", "basic"], ["dissolve", "Dissolve", "basic"], ["fadeblack", "Dip to black", "basic"], ["wipeleft", "Wipe left", "wipe"],
-  ["wiperight", "Wipe right", "wipe"], ["wipeup", "Wipe up", "wipe"], ["wipedown", "Wipe down", "wipe"], ["slideleft", "Slide left", "slide"],
-  ["slideright", "Slide right", "slide"], ["circleopen", "Circle open", "shape"], ["circleclose", "Circle close", "shape"], ["zoomin", "Zoom in", "shape"]];
+const TRANSITIONS = [["fade", "Fade", "basic"], ["dissolve", "Dissolve", "basic"], ["fadeblack", "Dip to black", "basic"], ["fadewhite", "Dip to white", "basic"],
+  ["wipeleft", "Wipe left", "wipe"], ["wiperight", "Wipe right", "wipe"], ["wipeup", "Wipe up", "wipe"], ["wipedown", "Wipe down", "wipe"],
+  ["smoothleft", "Soft wipe left", "wipe"], ["smoothright", "Soft wipe right", "wipe"],
+  ["slideleft", "Slide left", "slide"], ["slideright", "Slide right", "slide"], ["slideup", "Slide up", "slide"], ["slidedown", "Slide down", "slide"],
+  ["circleopen", "Circle open", "shape"], ["circleclose", "Circle close", "shape"], ["pixelize", "Pixelate", "shape"]];
 const TR_CATS = [["all", "All"], ["basic", "Basic"], ["wipe", "Wipe"], ["slide", "Slide"], ["shape", "Shape"]];
 /* [id, label, category, glyph] */
 const EFFECTS = [["flash", "Flash", "basic", "⚡"], ["blur", "Blur", "basic", "◌"], ["vignette", "Vignette", "basic", "◎"], ["grain", "Film grain", "basic", "▒"],
@@ -385,12 +387,59 @@ function drawMain(c, el, o) {
   cx.filter = "none";
   cx.restore();
 }
+const smoothstep = (a, b, x) => { const t = clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+const noise = (() => { const n = new Float32Array(320 * 180); for (let i = 0; i < n.length; i++) n[i] = Math.random(); return n; })();
+const dmask = document.createElement("canvas"); dmask.width = 320; dmask.height = 180;
+/* draw the incoming clip through a mask that `paint(ctx, W, H)` fills in, over what is already on the canvas */
+const snapCv = document.createElement("canvas");
+function drawMasked(inn, inEl, paint) {
+  const W = cv.width, H = cv.height;
+  if (snapCv.width !== W || snapCv.height !== H) { snapCv.width = W; snapCv.height = H; }
+  const sx = snapCv.getContext("2d");
+  sx.clearRect(0, 0, W, H); sx.drawImage(cv, 0, 0);                       // the outgoing clip, already drawn
+  cx.clearRect(0, 0, W, H); drawMain(inn, inEl);                          // the incoming clip on its own
+  tx.clearRect(0, 0, W, H); tx.drawImage(cv, 0, 0);
+  tx.globalCompositeOperation = "destination-in"; paint(tx, W, H); tx.globalCompositeOperation = "source-over";
+  cx.clearRect(0, 0, W, H); cx.drawImage(snapCv, 0, 0); cx.drawImage(tmp, 0, 0);
+}
 function drawTransition(out, outEl, inn, inEl, p, type) {
   const W = cv.width, H = cv.height;
   switch (type) {
-    case "fadeblack":
-      if (p < 0.5) drawMain(out, outEl, { a: 1 - p * 2 }); else drawMain(inn, inEl, { a: (p - 0.5) * 2 });
+    case "fadeblack": case "fadewhite": {                                      // the same curve the export uses
+      const s1 = smoothstep(0, 0.2, p), s2 = smoothstep(0.2, 1, p);
+      cx.fillStyle = type === "fadewhite" ? "#fff" : "#000"; cx.fillRect(0, 0, W, H);
+      drawMain(out, outEl, { a: 1 - s1 }); drawMain(inn, inEl, { a: s2 });
       break;
+    }
+    case "dissolve": {                                                         // a grainy dissolve, pixel by pixel
+      drawMain(out, outEl);
+      drawMasked(inn, inEl, (g, w, h) => {
+        const d = dmask.getContext("2d"), im = d.createImageData(320, 180);
+        for (let i = 0; i < noise.length; i++) im.data[i * 4 + 3] = noise[i] < p ? 255 : 0;
+        d.putImageData(im, 0, 0);
+        g.imageSmoothingEnabled = false; g.drawImage(dmask, 0, 0, w, h); g.imageSmoothingEnabled = true;
+      });
+      break;
+    }
+    case "smoothleft": case "smoothright": {
+      drawMain(out, outEl);
+      const s = 0.45, left = type === "smoothleft";
+      drawMasked(inn, inEl, (g, w, h) => {
+        const e = w * (1 - p * (1 + s)), x0 = left ? e : w - e, x1 = left ? e + s * w : w - e - s * w;
+        const gr = g.createLinearGradient(x0, 0, x1, 0); gr.addColorStop(0, "rgba(0,0,0,0)"); gr.addColorStop(1, "rgba(0,0,0,1)");
+        g.fillStyle = gr; g.fillRect(0, 0, w, h);
+      });
+      break;
+    }
+    case "slideup": drawMain(out, outEl, { dy: -H * p }); drawMain(inn, inEl, { dy: H * (1 - p) }); break;
+    case "slidedown": drawMain(out, outEl, { dy: H * p }); drawMain(inn, inEl, { dy: -H * (1 - p) }); break;
+    case "pixelize": {
+      drawMain(out, outEl); drawMain(inn, inEl, { a: p });
+      const f = 1 / (1 + 40 * Math.sin(p * Math.PI)), sw = Math.max(2, Math.round(W * f)), sh = Math.max(2, Math.round(H * f));
+      tx.clearRect(0, 0, W, H); tx.drawImage(cv, 0, 0, sw, sh);
+      cx.save(); cx.imageSmoothingEnabled = false; cx.drawImage(tmp, 0, 0, sw, sh, 0, 0, W, H); cx.restore();
+      break;
+    }
     case "wipeleft": drawMain(out, outEl); drawMain(inn, inEl, { clip: { x: W * (1 - p), y: 0, w: W * p, h: H } }); break;
     case "wiperight": drawMain(out, outEl); drawMain(inn, inEl, { clip: { x: 0, y: 0, w: W * p, h: H } }); break;
     case "wipeup": drawMain(out, outEl); drawMain(inn, inEl, { clip: { x: 0, y: H * (1 - p), w: W, h: H * p } }); break;
@@ -399,7 +448,6 @@ function drawTransition(out, outEl, inn, inEl, p, type) {
     case "slideright": drawMain(out, outEl, { dx: W * p }); drawMain(inn, inEl, { dx: -W * (1 - p) }); break;
     case "circleopen": drawMain(out, outEl); drawMain(inn, inEl, { clip: { circle: true, r: p * Math.hypot(W, H) / 2 } }); break;
     case "circleclose": drawMain(inn, inEl); drawMain(out, outEl, { clip: { circle: true, r: (1 - p) * Math.hypot(W, H) / 2 } }); break;
-    case "zoomin": drawMain(inn, inEl); drawMain(out, outEl, { sc: 1 + p * 0.7, a: 1 - p }); break;
     default: drawMain(out, outEl); drawMain(inn, inEl, { a: p });      // fade, dissolve
   }
 }
@@ -1309,7 +1357,8 @@ function keys(e) {
   else if (e.key === "Escape") { hide(); }
 }
 function freshProject() { return { aspect: "16:9", fit: "fit", video: [], overlay: [], text: [], effect: [], look: [], audio: [], lanes: {}, tracks: { o: 0, t: 0, e: 0, l: 0, a: 0 } }; }
-function normalise(P) { for (const k of ["video", "overlay", "text", "effect", "look", "audio"]) P[k] = P[k] || []; P.lanes = P.lanes || {}; return P; }
+function normalise(P) {
+  P.video.forEach((c) => { if (c.transition && !TRANSITIONS.some((t) => t[0] === c.transition.type) && c.transition.type !== "none") c.transition = { type: "fade", dur: c.transition.dur || 0.6 }; }); for (const k of ["video", "overlay", "text", "effect", "look", "audio"]) P[k] = P[k] || []; P.lanes = P.lanes || {}; return P; }
 function show() {
   build();
   $("ed").classList.add("on");

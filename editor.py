@@ -86,7 +86,7 @@ def clamp(v, lo, hi, default):
 
 
 TRANSITIONS = {"fade", "fadeblack", "dissolve", "wipeleft", "wiperight", "wipeup", "wipedown", "slideleft", "slideright",
-               "circleopen", "circleclose", "zoomin"}
+               "circleopen", "circleclose", "fadewhite", "smoothleft", "smoothright", "slideup", "slidedown", "pixelize"}
 
 # Looks ("filters"): colour treatments that run over a stretch of the timeline, with an intensity
 FILTERS = {
@@ -220,7 +220,10 @@ def build(project, resolve, out_path, enc_args, height_cap=1080, workdir=None):
         inputs += ["-ss", f"{cin:.3f}", "-t", f"{cout - cin:.3f}", "-i", str(path)]
 
         # the transition INTO this clip overlaps it with the one before
-        tr = c.get("transition") or {}
+        tr = dict(c.get("transition") or {})
+        if tr.get("type") == "zoomin":                       # removed (it came out as a flat colour), older projects get a fade
+            tr["type"] = "fade"
+            c["transition"] = tr
         ov = 0.0
         if i > 0 and tr.get("type") in TRANSITIONS:
             ov = clamp(tr.get("dur", 0.6), 0.1, 3, 0.6)
