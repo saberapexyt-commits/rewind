@@ -1,5 +1,4 @@
-- **Fixes clips with hours of sound and a broken timeline.** If the PC went to sleep (or Rewind was frozen for a while), the sound pipe could write the whole gap into the buffer, so the next clip came out hundreds of MB with a 140 minute timeline and a black strip. Rewind now skips that gap and keeps recording in real time.
-- **No damaged clip is ever kept.** Every saved clip, long recording, cut and edit export is checked before it appears in your library: it has to open, have a picture, and its sound has to match its picture. A clip that fails is repaired if possible and otherwise thrown away, never saved half-broken.
-- **Old damaged clips repair themselves.** When Rewind starts it fixes clips whose sound runs past the picture and clears out half-written files.
+- **Fixes Rewind getting stuck on slow "compatibility capture".** The fast screen capture can say no for a moment, for example right after an update restart. Rewind used to give up after two tries and then remember compatibility capture forever. It now waits and retries longer, only uses compatibility capture as a temporary fallback, and tries the fast capture again whenever a game starts or stops.
+- PCs that were locked into compatibility capture by this are put back on Automatic.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.

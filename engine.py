@@ -696,6 +696,11 @@ class Recorder:
         with self.lock:
             if not self.wanted:
                 return
+            if self.auto_gdi:                       # a temporary fallback: try the fast capture again for the new game
+                self.auto_gdi, self.notice, self.fails = False, "", 0
+                self.log("trying the fast capture again")
+                self._kill(); self._launch()
+                return
             if not game:
                 self.notice = ""
             if self.capture_kind == "window":
@@ -715,7 +720,7 @@ class Recorder:
         if not self.available:
             self.available = probe_encoders(self.log)
         self.encoder = pick_encoder(s["encoder"], self.available)
-        if self.fails >= 3 and self.encoder != "cpu":  # GPU path keeps failing: fall back
+        if self.fails >= 5 and self.encoder != "cpu":  # GPU path keeps failing: fall back
             self.log(f"{self.encoder} failed twice, falling back to CPU")
             self.encoder = "cpu"
         shutil.rmtree(self.buf, ignore_errors=True)
@@ -805,10 +810,6 @@ class Recorder:
             if m:
                 prev = self.order[-1][0] if self.order else None
                 self.order.append((Path(m.group(1)).name, time.monotonic()))
-                if self.auto_gdi and self.settings.get("capture_input", "") == "":
-                    self.settings["capture_input"] = "gdi"          # this PC needs compatibility capture, so start there next time
-                    self.persist("capture_input", "gdi")
-                    self.log("saved: this PC records with compatibility capture")
                 self.fails = 0
                 if self.long and prev:
                     self.long.piece_done(self.buf / prev)
@@ -936,14 +937,16 @@ class Recorder:
                     self.fails += 1
                     self.log("ffmpeg output: " + " | ".join(list(self.stderr_tail)[-8:]))
                     self._set_error("Capture stopped: " + (tail[-1] if tail else "ffmpeg exited"))
-                    if self.fails == 2 and self.input_mode() == "dda" and self.settings.get("capture_input", "") == "" and not self.window_target:
+                    if self.fails == 3 and self.input_mode() == "dda" and self.settings.get("capture_input", "") == "" and not self.window_target:
                         self.auto_gdi = True
                         self.notice = "The fast screen capture didn't work on this PC, so Rewind is trying compatibility capture."
                         self.log("switching to gdigrab")
                     self.state = "error"
                     self._kill()
-                    if self.fails <= 6:
-                        time.sleep(1)
+                    if self.fails <= 7:
+                        # Desktop Duplication can say no for a moment (right after an update restart, a screen switch,
+                        # a game going fullscreen), so give it a little longer each time before switching methods
+                        time.sleep(min(1 + 2 * self.fails, 7))
                         self._launch()
                         self.state = "buffering"
 

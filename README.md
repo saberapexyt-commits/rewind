@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.5.5
+
+- **Fixes Rewind getting stuck on slow "compatibility capture".** The fast screen capture can say no for a moment, for example right after an update restart. Rewind used to give up after two tries and then remember compatibility capture forever. It now waits and retries longer, only uses compatibility capture as a temporary fallback, and tries the fast capture again whenever a game starts or stops.
+- PCs that were locked into compatibility capture by this are put back on Automatic.
+
 ## 1.5.4
 
 - **Fixes clips with hours of sound and a broken timeline.** If the PC went to sleep (or Rewind was frozen for a while), the sound pipe could write the whole gap into the buffer, so the next clip came out hundreds of MB with a 140 minute timeline and a black strip. Rewind now skips that gap and keeps recording in real time.

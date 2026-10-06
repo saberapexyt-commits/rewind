@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.5.4"
+VERSION = "1.5.5"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -82,6 +82,13 @@ def load_settings():
         s.update(json.loads(SETTINGS_FILE.read_text(encoding="utf-8")))
     except Exception:
         pass
+    if s.get("capture_input") == "gdi" and not s.get("capture_reset_154"):
+        # versions 1.4.1 to 1.5.3 could lock a PC into compatibility capture after one bad start, so start again from Automatic
+        s["capture_input"], s["capture_reset_154"] = "", True
+        try:
+            save_settings(s)
+        except OSError:
+            pass
     if not s.get("sound", True):  # older settings files
         s["sound_name"], s["sound"] = "off", True
     return s

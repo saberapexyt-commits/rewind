@@ -447,6 +447,13 @@
       <h2>What's new</h2>
       <p class="intro">Every release, newest first.</p>
       <div class="rel">
+        <h3>Rewind 1.5.5</h3><time>October 6, 2026</time>
+        <ul>
+          <li><b>Fixes Rewind getting stuck on slow compatibility capture.</b> The fast capture can say no for a moment, like right after an update restart. Rewind now waits and retries longer, only uses compatibility capture as a temporary fallback, and tries the fast one again when a game starts or stops.</li>
+          <li>PCs that were locked into compatibility capture are put back on Automatic.</li>
+        </ul>
+      </div>
+      <div class="rel">
         <h3>Rewind 1.5.4</h3><time>October 6, 2026</time>
         <ul>
           <li><b>Fixes clips with hours of sound and a broken timeline.</b> After the PC slept, the sound could write the whole gap into the buffer. Rewind now skips that gap and keeps recording in real time.</li>
