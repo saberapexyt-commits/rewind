@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.7"
+VERSION = "1.6.8"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -60,7 +60,7 @@ DEFAULTS = {
     "hotkey_bookmark": None, "share_ok": False,
     "clip_toast": True, "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "capture_input": "", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
-    "close_to_tray": True, "start_with_windows": False, "auto_update": True, "skipped_version": "", "start_hidden": False,
+    "close_to_tray": True, "start_with_windows": False, "long_guard": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
@@ -419,13 +419,16 @@ class App:
             return self.stop_long()
         try:
             game = self.current_game()
-            self.rec.start_long(self.target_folder(game), game["name"] if game else (winbits.foreground_title() or "Desktop"))
+            log("long recording: starting")
+            self.rec.start_long(self.target_folder(game), game["name"] if game else (winbits.foreground_title() or "Desktop"),
+                                self.settings.get("long_guard", True))
         except Exception as e:
             self.events.append({"id": time.time(), "kind": "error", "message": str(e)})
             return {"ok": False, "error": str(e)}
         if self.settings.get("sound_name") != "off":
             self.play("ping")
         self.note("Recording started", "Press the same key again to stop. Add bookmarks with your bookmark key.")
+        log("long recording: started, notified")
         return {"ok": True}
 
     def stop_long(self):

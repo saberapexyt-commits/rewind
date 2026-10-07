@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.8
+
+- **Starting a long recording is gentler.** The crash-protection helper now starts a few seconds later and at low priority, so starting a recording can't compete with a game or a stream. There is a new switch in Settings, **Protect long recordings**, to turn the helper off entirely. Rewind also logs each step of starting a recording, to help track down anything that still gets in the way of a screenshare.
+
 ## 1.6.7
 
 - **Fixes "certificate verify failed: certificate has expired" when sharing a link.** Some PCs have a Windows that's missing newer root certificates, so it can't verify the sharing site. Rewind now falls back to the trusted list built into it, for sharing and for updates, downloads and the free sound search.

@@ -741,7 +741,7 @@ class LongRecording:
     A small helper process watches over it: if Rewind crashes or is force closed, the helper joins what was
     recorded and saves it, so a long recording is never lost."""
 
-    def __init__(self, started_at, log, folder=None, title="Desktop"):
+    def __init__(self, started_at, log, folder=None, title="Desktop", guard=True):
         self.dir = Path(tempfile.mkdtemp(prefix="rewind-long-"))
         self.t0 = started_at
         self.log = log
@@ -751,10 +751,13 @@ class LongRecording:
         self.q = queue.Queue()
         self.worker = threading.Thread(target=self._run, daemon=True)
         self.worker.start()
-        if folder is not None and not TEST:
-            self._start_guard(Path(folder), title)
+        if folder is not None and guard and not TEST:
+            # the helper starts a few seconds later, at low priority, so starting a recording never competes with a game or a stream
+            threading.Timer(4.0, self._start_guard, args=(Path(folder), title)).start()
 
     def _start_guard(self, folder, title):
+        if not self.dir.exists():
+            return                                   # the recording already ended
         try:
             stamp = datetime.now().strftime("%Y-%m-%d %H-%M-%S")
             info = {"pid": os.getpid(), "ffmpeg": FFMPEG, "ffprobe": FFPROBE, "log": str(LOG_FILE or ""),
@@ -764,7 +767,8 @@ class LongRecording:
             cmd = [sys.executable] + ([] if frozen else [str(Path(__file__).with_name("app.py"))]) + ["--guard", str(self.dir)]
             env = {k: v for k, v in os.environ.items() if not k.startswith("_PYI") and k != "_MEIPASS2"}
             self.guard = subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                          creationflags=NO_WINDOW | 0x8 | 0x200, env=env, close_fds=True)
+                                          creationflags=NO_WINDOW | 0x8 | 0x200 | 0x4000, env=env, close_fds=True)   # + BELOW_NORMAL priority
+            self.log(f"recording guard started (pid {self.guard.pid})")
         except Exception as e:
             self.log(f"couldn't start the recording guard: {e}")
 
@@ -1110,7 +1114,7 @@ class Recorder:
             self.proc = None
 
     # ---- long recording
-    def start_long(self, folder=None, title="Desktop"):
+    def start_long(self, folder=None, title="Desktop", guard=True):
         with self.lock:
             if self.long:
                 return False
@@ -1118,7 +1122,7 @@ class Recorder:
                 raise RuntimeError("Rewind isn't recording yet. Wait a moment and try again.")
             if free_bytes(tempfile.gettempdir()) < 2e9:
                 raise RuntimeError("Your drive is almost full, so a long recording wouldn't fit. Free up some space first.")
-            self.long = LongRecording(self.order[-1][1], self.log, folder, title)
+            self.long = LongRecording(self.order[-1][1], self.log, folder, title, guard)
             self.log("long recording started")
             return True
 
