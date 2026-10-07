@@ -629,6 +629,10 @@
         <div class="seg" id="seg-fps"></div>
       </div>
       <div class="set">
+        <div class="lbl"><b>Impact on games</b><small id="perf-note">Rewind already yields to your game. If a heavy game still loses frames while recording, pick Low impact.</small></div>
+        <div class="seg" id="seg-perf"></div>
+      </div>
+      <div class="set">
         <div class="lbl"><b>Clip size</b><small id="size-note">How big the picture is. Smaller makes smaller files and is easier on your PC.</small></div>
         <div class="seg" id="seg-size"></div>
       </div>
@@ -921,7 +925,7 @@ async function poll() {
     $("pill").className = "pill error"; $("pill").querySelector("span").textContent = "Offline";
     $("foot").textContent = "Rewind isn't responding. Restart it from the tray.";
   }
-  setTimeout(poll, 500);
+  setTimeout(poll, document.hidden ? 4000 : 700);                // the window rarely needs updating when nobody can see it
 }
 
 function render() {
@@ -1529,6 +1533,9 @@ function renderSettings() {
   seg("seg-encoder", [["auto", "Automatic"],
     ...Object.entries(gpuNames).map(([k, n]) => [k, n, !av[k], av[k]]), ["cpu", "CPU"]], s.encoder, "encoder");
   seg("seg-fps", [[30, "30 fps"], [60, "60 fps"]], s.fps, "fps", Number);
+  seg("seg-perf", [["balanced", "Balanced"], ["low", "Low impact"]], s.performance || "balanced", "performance");
+  $("perf-note").textContent = s.performance === "low" ? "Records at 30 fps with the lightest encoder settings so games run as freely as possible."
+    : "Rewind already yields to your game. If a heavy game still loses frames while recording, pick Low impact.";
   seg("seg-quality", [["small", "Smaller files"], ["balanced", "Balanced"], ["best", "Best"]], s.quality, "quality");
   const mon0 = (S.monitors || [])[Number(s.monitor) || 0] || {};
   seg("seg-size", [[0, mon0.h ? `Original (${mon0.h}p)` : "Original"], [1440, "1440p"], [1080, "1080p"], [720, "720p"], [480, "480p"]], s.output_height || 0, "output_height", Number);

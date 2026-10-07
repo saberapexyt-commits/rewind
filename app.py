@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.11"
+VERSION = "1.6.12"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -53,7 +53,7 @@ def version_tuple(v):
     return tuple(int(x) for x in v.lstrip("v").split(".") if x.isdigit())
 
 DEFAULTS = {
-    "length": 30, "fps": 60, "quality": "balanced", "output_height": 0, "encoder": "auto", "monitor": 0,
+    "length": 30, "fps": 60, "quality": "balanced", "performance": "balanced", "output_height": 0, "encoder": "auto", "monitor": 0,
     "desktop_audio": True, "mic": True, "mic_device": None, "output_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
@@ -64,7 +64,7 @@ DEFAULTS = {
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
-RESTART_KEYS = {"length", "fps", "quality", "output_height", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "output_device", "capture", "capture_input"}
+RESTART_KEYS = {"length", "fps", "quality", "performance", "output_height", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "output_device", "capture", "capture_input"}
 
 
 def log(msg):

@@ -202,6 +202,33 @@ def bind_to_app(proc):
         pass
 
 
+def lower_priority(proc):
+    """Make the recorder yield to the game: lower CPU priority, and lower GPU scheduling priority, so when the game
+    needs every bit of the graphics card it goes first and the recording takes what's left."""
+    if not IS_WIN:
+        return
+    try:
+        import ctypes
+        k = ctypes.WinDLL("kernel32")
+        k.SetPriorityClass.argtypes = [ctypes.c_void_p, ctypes.c_ulong]
+        k.SetPriorityClass(int(proc._handle), 0x4000)                         # BELOW_NORMAL_PRIORITY_CLASS
+
+        def gpu():                                                               # only works once ffmpeg has started using the graphics card
+            g = ctypes.WinDLL("gdi32")
+            f = g.D3DKMTSetProcessSchedulingPriorityClass
+            f.argtypes = [ctypes.c_void_p, ctypes.c_int]
+            f.restype = ctypes.c_long
+            for _ in range(12):
+                time.sleep(1)
+                if proc.poll() is not None:
+                    return
+                if f(int(proc._handle), 1) == 0:                                 # D3DKMT_SCHEDULINGPRIORITYCLASS_BELOW_NORMAL
+                    return
+        threading.Thread(target=gpu, daemon=True).start()
+    except Exception:
+        pass
+
+
 def pid_alive(pid):
     if not IS_WIN:
         return False
@@ -306,18 +333,19 @@ def pick_encoder(choice, available):
     return "cpu"
 
 
-def video_args(enc, quality, fps):
+def video_args(enc, quality, fps, low=False, rec=False):
     q = QUALITY.get(quality, 25)
     gop = ["-g", str(fps * SEG), "-force_key_frames", f"expr:gte(t,n_forced*{SEG})"]
     if enc == "nvidia":
-        a = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", str(q), "-b:v", "0"]
+        a = ["-c:v", "h264_nvenc", "-preset", "p2" if low else "p4", "-rc", "vbr", "-cq", str(q), "-b:v", "0"]
     elif enc == "amd":
-        a = ["-c:v", "h264_amf", "-quality", "balanced", "-rc", "cqp", "-qp_i", str(q), "-qp_p", str(q + 2)]
+        a = ["-c:v", "h264_amf", "-quality", "speed" if low else "balanced", "-rc", "cqp", "-qp_i", str(q), "-qp_p", str(q + 2)]
     elif enc == "intel":
         a = ["-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", str(q)]
     else:
-        a = ["-c:v", "libx264", "-preset", "ultrafast" if fps > 30 else "veryfast", "-crf", str(q),
-             "-pix_fmt", "yuv420p"]
+        # the CPU encoder shares the processor with the game, so keep it to a few threads instead of taking every core
+        a = ["-c:v", "libx264", "-preset", "ultrafast" if (fps > 30 or low) else "veryfast", "-crf", str(q),
+             "-pix_fmt", "yuv420p"] + (["-threads", "2" if low else str(max(2, (os.cpu_count() or 8) // 3))] if rec else [])
     return a + gop
 
 
@@ -712,7 +740,7 @@ def frame_stats(path):
     try:
         r = subprocess.run([FFMPEG, "-v", "error", "-i", str(path), "-frames:v", "1",
                             "-vf", "scale=64:36,format=gray", "-f", "rawvideo", "-"],
-                           capture_output=True, timeout=20, creationflags=NO_WINDOW, stdin=subprocess.DEVNULL)
+                           capture_output=True, timeout=20, creationflags=NO_WINDOW | 0x4000, stdin=subprocess.DEVNULL)   # + below normal priority
         a = np.frombuffer(r.stdout, np.uint8)
         if a.size < 64 * 36:
             return None
@@ -1042,6 +1070,9 @@ class Recorder:
         self.buf.mkdir(parents=True, exist_ok=True)
         self.order.clear()
         fps, length = int(s["fps"]), int(s["length"])
+        low = s.get("performance") == "low"                      # "Low impact": 30 fps and the lightest encoder settings
+        if low:
+            fps = min(fps, 30)
         wrap = math.ceil(length / SEG) + 4
         want_audio = bool(s["desktop_audio"] or s["mic"])
         self.has_audio = False
@@ -1094,7 +1125,7 @@ class Recorder:
         if self.has_audio:
             cmd += input_queue_args() + ["-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
         cmd += ["-map", "0:v"] + (["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if self.has_audio else [])
-        cmd += video_args(self.encoder, s["quality"], fps)
+        cmd += video_args(self.encoder, s["quality"], fps, low, True)
         cmd += ["-f", "segment", "-segment_time", str(SEG), "-segment_wrap", str(wrap),
                 "-segment_format", "mpegts", "-reset_timestamps", "1", str(self.buf / "seg%03d.ts")]
         self.log("ffmpeg: " + " ".join(cmd))
@@ -1102,6 +1133,7 @@ class Recorder:
                                      stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
                                      creationflags=NO_WINDOW, bufsize=0)
         bind_to_app(self.proc)
+        lower_priority(self.proc)
         self.started_at = time.monotonic()
         self.state = "buffering"
         if not self.has_audio or "Audio library" not in self.error:
