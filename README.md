@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.10
+
+- **A frozen capture now fixes itself.** If the picture froze while ffmpeg stayed running (the sound carried on), only closing Rewind used to help. Rewind now notices after about 12 seconds without new video, restarts the capture, and carries on. A long recording continues through it. The restart used to be able to hang itself, because it closed the audio pipe while a write was still waiting on it, so it now ends the recorder first.
+
 ## 1.6.9
 
 - **Smoother clips and long recordings.** Rewind records in 2 second pieces and joins them when you save. The joiner added a tiny extra pause (up to 65 ms) at every join, so the picture hitched every two seconds and the sound steps were uneven, which could look like the video freezing while the sound kept going. Pieces are now joined at their true length: in a test, the hitches at the joins dropped from 32 to a handful of single-frame gaps, and the sound steps became perfectly even. This applies to replay clips and long recordings, including recovered ones.

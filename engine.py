@@ -1127,19 +1127,23 @@ class Recorder:
             self.pump.stop()
             self.pump = None
         if self.proc:
+            # End the process first. If ffmpeg has hung, the audio thread is stuck writing to its pipe, and closing
+            # that pipe while the write is still waiting never returns, which is what made a frozen capture
+            # impossible to recover without closing Rewind.
+            try:
+                self.proc.terminate()
+                self.proc.wait(timeout=2)
+            except Exception:
+                try:
+                    self.proc.kill()
+                    self.proc.wait(timeout=2)
+                except Exception:
+                    pass
             try:
                 if self.proc.stdin:
                     self.proc.stdin.close()
             except Exception:
                 pass
-            try:
-                self.proc.terminate()
-                self.proc.wait(timeout=3)
-            except Exception:
-                try:
-                    self.proc.kill()
-                except Exception:
-                    pass
             self.proc = None
 
     # ---- long recording
@@ -1191,6 +1195,8 @@ class Recorder:
             time.sleep(4)
             try:
                 self._disk_check()
+                if self.notice.startswith("The screen capture froze") and self.state == "buffering" and len(self.order) > 8:
+                    self.notice = ""
                 if self.state != "buffering" or len(self.order) < 2:
                     continue
                 seg = self.buf / self.order[-2][0]
@@ -1290,10 +1296,22 @@ class Recorder:
             time.sleep(1.5)
             with self.lock:
                 # ffmpeg can also sit there alive but silent (a capture method that never produces a frame)
+                now = time.monotonic()
                 stalled = (self.wanted and self.proc and self.proc.poll() is None and not self.order and self.state == "buffering"
-                           and time.monotonic() - self.started_at > 14 and not TEST)
+                           and now - self.started_at > 14 and not TEST)
+                froze = (self.wanted and self.proc and self.proc.poll() is None and self.order and self.state == "buffering"
+                         and now - max(self.order[-1][1], self.started_at) > 12)
+                if froze:
+                    # it was recording and then stopped producing video while ffmpeg stayed alive (the picture freezes, the
+                    # sound carries on). Only closing Rewind used to fix that, so restart the capture by itself instead.
+                    secs = int(now - max(self.order[-1][1], self.started_at))
+                    self.stderr_tail.append(f"the video froze for {secs} seconds, so the capture was restarted")
+                    self.log(f"video capture froze (no new picture for {secs}s), restarting it")
+                    self.notice = "The screen capture froze, so Rewind restarted it."
+                    stalled = True
                 if stalled:
-                    self.stderr_tail.append("ffmpeg started but no video came out in 14 seconds")
+                    if not froze:
+                        self.stderr_tail.append("ffmpeg started but no video came out in 14 seconds")
                     self._kill()
                 if self.wanted and (stalled or (self.proc and self.proc.poll() is not None)):
                     tail = [l for l in self.stderr_tail if "rror" in l or "ailed" in l or "no video" in l] or list(self.stderr_tail)
