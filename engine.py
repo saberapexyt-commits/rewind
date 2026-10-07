@@ -711,6 +711,19 @@ def is_black(stats):
     return stats is not None and stats[1] < 2.5 and stats[0] < 40
 
 
+def piece_length(measured):
+    """How long a buffer piece lasts on the timeline when joining. Pieces are cut every SEG seconds, so that is
+    almost always exactly right; telling the joiner so keeps the picture from hitching at every join. A piece that
+    ran long (the picture stalled for a moment) keeps its real length so the sound stays in step."""
+    if measured is None or abs(measured - SEG) < 0.25:
+        return float(SEG)
+    return round(min(measured, 30.0), 3)
+
+
+def concat_list(files, lengths):
+    return "".join(f"file '{Path(p).as_posix()}'\nduration {piece_length(l):.3f}\n" for p, l in zip(files, lengths))
+
+
 def _join_long(d, final, log, max_len):
     """Join the kept 2 second pieces into `final`. The result is checked before it is kept."""
     d, final = Path(d), Path(final)
@@ -718,7 +731,14 @@ def _join_long(d, final, log, max_len):
     if not pieces:
         raise RuntimeError("Nothing was recorded.")
     lst = d / "list.txt"
-    lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in pieces), encoding="utf-8")
+    lens = {}
+    try:
+        for line in (d / "durs.txt").read_text(encoding="utf-8").splitlines():
+            k, _, v = line.partition(",")
+            lens[int(k)] = float(v)
+    except (OSError, ValueError):
+        pass
+    lst.write_text(concat_list(pieces, [lens.get(int(p.stem)) if p.stem.isdigit() else None for p in pieces]), encoding="utf-8")
     part = final.with_name(final.stem + ".part")
     final.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -777,15 +797,19 @@ class LongRecording:
             src = self.q.get()
             if src is None:
                 return
+            src, length = src if isinstance(src, tuple) else (src, None)
             try:
                 if src.exists() and src.stat().st_size > 0:
                     shutil.copyfile(src, self.dir / f"{self.n:06d}.ts")
+                    if length is not None:
+                        with open(self.dir / "durs.txt", "a", encoding="utf-8") as f:
+                            f.write(f"{self.n},{length:.3f}\n")
                     self.n += 1
             except OSError as e:
                 self.log(f"long recording: couldn't keep {src.name}: {e}")
 
-    def piece_done(self, path):
-        self.q.put(path)
+    def piece_done(self, path, length=None):
+        self.q.put((path, length))
 
     def elapsed(self):
         return max(0.0, time.monotonic() - self.t0)
@@ -810,7 +834,7 @@ class LongRecording:
     def finish(self, last_piece, final):
         """Join everything into `final` (an .mp4 path). Returns the bookmark list."""
         if last_piece:
-            self.q.put(last_piece)
+            self.q.put((last_piece, None))
         self.q.put(None)
         self.worker.join(60)
         try:
@@ -1086,10 +1110,15 @@ class Recorder:
             m = pat.search(line)
             if m:
                 prev = self.order[-1][0] if self.order else None
-                self.order.append((Path(m.group(1)).name, time.monotonic()))
+                now = time.monotonic()
+                prev_len = (now - self.order[-1][1]) if self.order else None
+                self.order.append((Path(m.group(1)).name, now))
+                if prev_len is not None and prev_len > 3.5:
+                    self.log(f"video capture stalled: one piece took {prev_len:.1f}s instead of {SEG}s (the picture froze for a moment)")
+                    self.stalls = getattr(self, "stalls", 0) + 1
                 self.fails = 0
                 if self.long and prev:
-                    self.long.piece_done(self.buf / prev)
+                    self.long.piece_done(self.buf / prev, prev_len)
             elif line:
                 self.stderr_tail.append(line)
 
@@ -1341,7 +1370,14 @@ class Recorder:
             if len(names) >= need:
                 break
         names.reverse()
+        opened = {}
+        for nm, tt in self.order:
+            opened[nm] = tt                                   # when each piece was opened, newest wins
+        starts = [opened.get(n) for n in names]
+        lens_by = {n: ((starts[i + 1] - starts[i]) if starts[i] is not None and starts[i + 1] is not None else None)
+                   for i, n in enumerate(names[:-1])}
         files = [self.buf / n for n in names if (self.buf / n).exists() and (self.buf / n).stat().st_size > 0]
+        piece_lens = [lens_by.get(p.name) for p in files]
         if not files:
             raise RuntimeError("Nothing to save yet. The buffer is empty.")
 
@@ -1361,7 +1397,7 @@ class Recorder:
             # One pass, straight from the buffer: the ring keeps a few spare pieces so nothing we read is reused
             # while we copy. Every piece starts on a keyframe, so dropping whole pieces is the trim.
             lst = work / "list.txt"
-            lst.write_text("".join(f"file '{p.as_posix()}'\n" for p in files), encoding="utf-8")
+            lst.write_text(concat_list(files, piece_lens), encoding="utf-8")
             r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
                      "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=300)
             if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:

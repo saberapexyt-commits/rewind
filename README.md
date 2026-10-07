@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.9
+
+- **Smoother clips and long recordings.** Rewind records in 2 second pieces and joins them when you save. The joiner added a tiny extra pause (up to 65 ms) at every join, so the picture hitched every two seconds and the sound steps were uneven, which could look like the video freezing while the sound kept going. Pieces are now joined at their true length: in a test, the hitches at the joins dropped from 32 to a handful of single-frame gaps, and the sound steps became perfectly even. This applies to replay clips and long recordings, including recovered ones.
+- **Freeze detection.** If the screen capture itself stalls for a few seconds (a heavy game, a busy GPU), Rewind now writes a "video capture stalled" line with how long it lasted to `rewind.log`, so a real stall can be told apart from a joining problem.
+
 ## 1.6.8
 
 - **Starting a long recording is gentler.** The crash-protection helper now starts a few seconds later and at low priority, so starting a recording can't compete with a game or a stream. There is a new switch in Settings, **Protect long recordings**, to turn the helper off entirely. Rewind also logs each step of starting a recording, to help track down anything that still gets in the way of a screenshare.
