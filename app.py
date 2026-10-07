@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.10"
+VERSION = "1.6.11"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -53,7 +53,7 @@ def version_tuple(v):
     return tuple(int(x) for x in v.lstrip("v").split(".") if x.isdigit())
 
 DEFAULTS = {
-    "length": 30, "fps": 60, "quality": "balanced", "encoder": "auto", "monitor": 0,
+    "length": 30, "fps": 60, "quality": "balanced", "output_height": 0, "encoder": "auto", "monitor": 0,
     "desktop_audio": True, "mic": True, "mic_device": None, "output_device": None,
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
@@ -64,7 +64,7 @@ DEFAULTS = {
     "clips_dir": winbits.default_clips_dir(),
 }
 HOTKEY_KEYS = {"clip": "hotkey", "record": "hotkey_record", "bookmark": "hotkey_bookmark"}
-RESTART_KEYS = {"length", "fps", "quality", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "output_device", "capture", "capture_input"}
+RESTART_KEYS = {"length", "fps", "quality", "output_height", "encoder", "monitor", "desktop_audio", "mic", "mic_device", "output_device", "capture", "capture_input"}
 
 
 def log(msg):
@@ -126,17 +126,29 @@ def trim_log(limit=1_000_000, keep=300_000):
         pass
 
 
+_SAVE_LOCK = threading.Lock()
+
+
 def save_settings(s):
-    """Write to a temporary file and swap it in, so a crash or power cut can't leave half a settings file."""
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
-    tmp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
-    tmp.write_text(json.dumps(s, indent=2), encoding="utf-8")
-    try:
-        if SETTINGS_FILE.exists():
-            shutil.copyfile(SETTINGS_FILE, SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".bak"))
-    except OSError:
-        pass
-    os.replace(tmp, SETTINGS_FILE)
+    """Write to a temporary file and swap it in, so a crash or power cut can't leave half a settings file.
+    One save at a time, and a short retry if Windows (or a virus scanner) has the file open for a moment."""
+    with _SAVE_LOCK:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        tmp = SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".tmp")
+        tmp.write_text(json.dumps(s, indent=2), encoding="utf-8")
+        try:
+            if SETTINGS_FILE.exists():
+                shutil.copyfile(SETTINGS_FILE, SETTINGS_FILE.with_name(SETTINGS_FILE.name + ".bak"))
+        except OSError:
+            pass
+        for i in range(20):
+            try:
+                os.replace(tmp, SETTINGS_FILE)
+                return
+            except PermissionError:
+                if i == 19:
+                    raise
+                time.sleep(0.05)
 
 
 class App:
@@ -1166,9 +1178,24 @@ class Handler(BaseHTTPRequestHandler):
                     return self._send(200, {"ok": False, "error": str(e)})
             if path == "/api/pick-folder":
                 r = APP.pick_folder()
+                log(f"clips folder dialog returned: {r!r}")
                 if r:
-                    APP.update_settings({"clips_dir": r})
+                    APP.update_settings({"clips_dir": str(Path(r))})
                 return self._send(200, {"ok": bool(r), "path": APP.settings["clips_dir"]})
+            if path == "/api/set-folder":                     # a folder typed or pasted into Settings
+                try:
+                    p = Path(str(body.get("path", "")).strip().strip('"')).expanduser()
+                    if not str(p) or str(p) == ".":
+                        raise OSError("Type or paste a folder path first.")
+                    p.mkdir(parents=True, exist_ok=True)
+                    probe = p / ".rewind-write-test"
+                    probe.write_text("ok")
+                    probe.unlink()
+                except OSError as e:
+                    return self._send(200, {"ok": False, "error": f"Rewind can't save to that folder: {e}"})
+                APP.update_settings({"clips_dir": str(p.resolve())})
+                log(f"clips folder set to {p}")
+                return self._send(200, {"ok": True, "path": APP.settings["clips_dir"]})
             if path == "/api/open-folder":
                 winbits.open_folder(APP.settings["clips_dir"])
                 return self._send(200, {"ok": True})

@@ -629,7 +629,11 @@
         <div class="seg" id="seg-fps"></div>
       </div>
       <div class="set">
-        <div class="lbl"><b>Quality</b><small>Best looks sharper in fast motion and makes bigger files.</small></div>
+        <div class="lbl"><b>Clip size</b><small id="size-note">How big the picture is. Smaller makes smaller files and is easier on your PC.</small></div>
+        <div class="seg" id="seg-size"></div>
+      </div>
+      <div class="set">
+        <div class="lbl"><b>Quality</b><small>Best looks sharper in fast motion and makes bigger files. Smaller files is about half the size of Best.</small></div>
         <div class="seg" id="seg-quality"></div>
       </div>
     </div>
@@ -661,6 +665,10 @@
       <div class="set">
         <div class="lbl"><b>Clips folder</b><small class="path" id="clipsdir"></small></div>
         <div style="display:flex;gap:8px"><button class="btn" id="openfolder3">Open</button><button class="btn" id="pickfolder">Change</button></div>
+      </div>
+      <div class="set" id="typedfolder">
+        <div class="lbl"><b>Or type a folder</b><small>Paste a path like D:\Clips. Rewind makes it if it isn't there and checks it can save in it.</small></div>
+        <div style="display:flex;gap:8px"><input type="text" id="folderpath" spellcheck="false" placeholder="D:\Clips" style="min-width:230px"><button class="btn" id="usefolder">Use it</button></div>
       </div>
     </div>
 
@@ -1508,8 +1516,11 @@ function renderUpdates() {
 function renderSettings() {
   if (!S) return;
   const s = S.settings, st = S.status, av = st.available || {};
-  $("gpu-found").textContent = (S.gpus && S.gpus.length ? "Windows found: " + S.gpus.map((g) => g.split(" | ")[0]).join(", ") + ". " : "")
-    + Object.entries(S.encoder_notes || {}).filter(([, v]) => v).map(([k, v]) => `${{ nvidia: "NVIDIA", amd: "AMD", intel: "Intel" }[k] || k} encoder not available (${v.slice(0, 90)}).`).join(" ");
+  const realGpus = (S.gpus || []).map((g) => g.split(" | ")[0]).filter((n) => !/virtual|meta |basic display|remote|parsec|indirect|idd/i.test(n));
+  const missing = Object.entries(S.encoder_notes || {}).filter(([, v]) => v).map(([k]) => ({ nvidia: "NVIDIA", amd: "AMD", intel: "Intel" }[k] || k));
+  $("gpu-found").textContent = (realGpus.length ? "Graphics found: " + realGpus.join(", ") + ". " : "")
+    + (missing.length ? missing.join(" and ") + " video encoding isn't available on this PC, which is normal if you don't have that kind of graphics card." : "");
+  $("gpu-found").title = Object.values(S.encoder_notes || {}).filter(Boolean).join("\n");
   seg("seg-capin", [["", "Automatic"], ["dda", "Fast"], ["gdi", "Compatible"]], s.capture_input || "", "capture_input");
   $("cap-in-note").textContent = st.capture_mode === "gdi" ? "Using compatibility capture. It works on every PC but is a little heavier. Pick Fast to try the quick method again."
     : "Automatic uses the fast method and switches by itself if your PC can't.";
@@ -1519,6 +1530,9 @@ function renderSettings() {
     ...Object.entries(gpuNames).map(([k, n]) => [k, n, !av[k], av[k]]), ["cpu", "CPU"]], s.encoder, "encoder");
   seg("seg-fps", [[30, "30 fps"], [60, "60 fps"]], s.fps, "fps", Number);
   seg("seg-quality", [["small", "Smaller files"], ["balanced", "Balanced"], ["best", "Best"]], s.quality, "quality");
+  const mon0 = (S.monitors || [])[Number(s.monitor) || 0] || {};
+  seg("seg-size", [[0, mon0.h ? `Original (${mon0.h}p)` : "Original"], [1440, "1440p"], [1080, "1080p"], [720, "720p"], [480, "480p"]], s.output_height || 0, "output_height", Number);
+  document.querySelectorAll("#seg-size button").forEach((b) => { const v = Number(b.dataset.v); if (v && mon0.h && v >= mon0.h - 8) { b.disabled = true; b.title = "Your screen isn't bigger than this"; } });
 
   const known = Object.keys(av).length > 0;
   $("gpuline").classList.toggle("cpu", st.encoder === "cpu");
@@ -1594,7 +1608,12 @@ $("previewtoast").onclick = () => api("/api/overlay/preview", {});
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
 $("openlog").onclick = () => api("/api/open-log");
 $("copydiag").onclick = async () => { const r = await api("/api/diagnostics"); $("diag-note").textContent = r.ok ? "Copied. Paste it into your message." : "Couldn't copy. Use Show log file instead."; };
-$("pickfolder").onclick = () => api("/api/pick-folder").then(() => loadClips());
+$("pickfolder").onclick = () => api("/api/pick-folder").then((r) => { if (!r.ok) toast({ kind: "note", title: "Folder not changed", message: "Nothing was picked. You can also type the folder in the box below." }); loadClips(); });
+$("usefolder").onclick = async () => {
+  const r = await api("/api/set-folder", { path: $("folderpath").value });
+  if (r.ok) { $("folderpath").value = ""; toast({ kind: "note", title: "Clips folder changed", message: r.path }); loadClips(); } else toast({ kind: "error", message: r.error });
+};
+$("folderpath").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") $("usefolder").click(); });
 
 /* ---------- hotkeys: clip, long recording, bookmark */
 let listening = false;                          // which one is waiting for a key: "clip" | "record" | "bookmark" | false

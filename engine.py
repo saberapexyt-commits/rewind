@@ -350,14 +350,25 @@ def _gpu_tail(enc):
     return ""  # NVENC and AMF take the GPU frames directly
 
 
-def capture_graph(enc, monitor, fps, window=None):
+def shrink_tail(enc, src_w, src_h, target_h):
+    """Filters that make the recorded picture target_h tall (never bigger than the screen)."""
+    if not target_h or not src_h or target_h >= src_h - 8:
+        return ""
+    w = max(2, int(round(src_w * target_h / src_h)) // 2 * 2) if src_w else -2
+    if enc == "intel":
+        return f",vpp_qsv=w={w}:h={target_h}" if filter_options("vpp_qsv") and src_w else ""
+    return f",hwdownload,format=bgra,scale={w}:{target_h}:flags=fast_bilinear" + ("" if enc == "cpu" else ",format=nv12")
+
+
+def capture_graph(enc, monitor, fps, window=None, src=None, target_h=0):
     """Screen capture (Desktop Duplication), or one game's window (Windows Graphics Capture).
 
     Window capture is the fix for black clips: some fullscreen games and laptops with two
     graphics chips block Desktop Duplication, but still allow capturing the game's window."""
     if TEST:
-        src = os.environ.get("REWIND_TEST_WINDOW_SRC" if window else "REWIND_TEST_SRC", "testsrc2=size=1280x720")
-        return f"{src}:rate={fps}" if "rate=" not in src else src
+        tsrc = os.environ.get("REWIND_TEST_WINDOW_SRC" if window else "REWIND_TEST_SRC", "testsrc2=size=1280x720")
+        g = f"{tsrc}:rate={fps}" if "rate=" not in tsrc else tsrc
+        return g + (f",scale=-2:{target_h}" if target_h and target_h < 712 else "")
     if window:
         o = filter_options("gfxcapture")
         parts = []
@@ -376,6 +387,10 @@ def capture_graph(enc, monitor, fps, window=None):
     g = f"ddagrab=output_idx={monitor}:framerate={fps}:draw_mouse=1"
     if "output_fmt" in o:
         g += ":output_fmt=bgra"  # 8-bit: HDR desktops otherwise come out washed out or black
+    if src and target_h:
+        shrink = shrink_tail(enc, src[0], src[1], target_h)
+        if shrink:
+            return g + (_gpu_tail(enc) + shrink if enc == "intel" else shrink)
     return g + _gpu_tail(enc)
 
 
@@ -1043,6 +1058,18 @@ class Recorder:
         cmd = [FFMPEG, "-hide_banner", "-nostats", "-loglevel", "info"]
         if TEST:
             cmd += ["-re"]
+        th = int(s.get("output_height") or 0)                    # the clip size picked in Settings, 0 = as the screen is
+        src_dims = None
+        try:
+            import winbits
+            mons = winbits.monitors()
+            m0 = mons[int(s["monitor"])] if int(s["monitor"]) < len(mons) else mons[0]
+            if m0.get("w"):
+                src_dims = (m0["w"], m0["h"])
+        except Exception:
+            pass
+        if TEST and not src_dims:
+            src_dims = (1280, 720)
         mode = self.input_mode()
         self.capture_mode = mode
         if mode == "gdi" and not self.window_target and not TEST:
@@ -1059,8 +1086,11 @@ class Recorder:
             except Exception:
                 pass
             cmd += ["-i", "desktop"]
+            if th and src_dims and th < src_dims[1] - 8:
+                cmd += ["-vf", f"scale=-2:{th}:flags=fast_bilinear,format=nv12"]
         else:
-            cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target)]
+            cmd += ["-f", "lavfi", "-i", capture_graph(self.encoder, int(s["monitor"]), fps, self.window_target,
+                                                       src_dims if not self.window_target else None, th)]
         if self.has_audio:
             cmd += input_queue_args() + ["-f", "s16le", "-ar", str(RATE), "-ac", "2", "-i", "pipe:0"]
         cmd += ["-map", "0:v"] + (["-map", "1:a", "-c:a", "aac", "-b:a", "192k"] if self.has_audio else [])

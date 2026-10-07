@@ -30,6 +30,13 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.11
+
+- **Pick the clip size.** New **Clip size** in Settings → Video: Original, 1440p, 1080p, 720p or 480p. Smaller sizes make smaller files and are easier on your PC. Sizes bigger than your screen are greyed out. In a test on a 1080p screen, 720p came out at 1280×720 and 480p at 854×480. Intel graphics use the card's own scaler, which I couldn't test here.
+- **Clips folder you can type.** The Change button now tells you if nothing was picked, and a new box lets you type or paste a folder. Rewind creates it and checks it can save there before switching, and says why if it can't.
+- **Clearer graphics info.** The Video card now lists only your real graphics cards (not virtual monitors like "Meta Virtual Monitor") and explains in plain words when an encoder isn't available, instead of showing raw ffmpeg text.
+- **Settings saving is sturdier.** Two settings changes at the same moment, or a virus scanner touching the file, could make a save fail. Saves now take turns and retry briefly.
+
 ## 1.6.10
 
 - **A frozen capture now fixes itself.** If the picture froze while ffmpeg stayed running (the sound carried on), only closing Rewind used to help. Rewind now notices after about 12 seconds without new video, restarts the capture, and carries on. A long recording continues through it. The restart used to be able to hang itself, because it closed the audio pipe while a write was still waiting on it, so it now ends the recorder first.
