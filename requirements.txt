@@ -4,3 +4,4 @@ pystray          # tray icon
 Pillow           # tray icon image
 PyAudioWPatch    # game/desktop audio (WASAPI loopback) and mic
 send2trash       # "Delete" moves clips to the Recycle Bin
+certifi          # trusted root certificates, used when this PC's own list is out of date

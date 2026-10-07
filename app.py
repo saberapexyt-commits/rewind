@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.6"
+VERSION = "1.6.7"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -179,7 +179,7 @@ class App:
             import urllib.request
             req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/releases/latest",
                                          headers={"Accept": "application/vnd.github+json", "User-Agent": "Rewind"})
-            with urllib.request.urlopen(req, timeout=10) as r:
+            with engine.urlopen(req, timeout=10) as r:
                 rel = json.load(r)
             tag = rel.get("tag_name", "")
             self.update_status["checked"] = int(time.time())
@@ -214,7 +214,7 @@ class App:
         self.update.update(downloading=True, progress=0)
         try:
             req = urllib.request.Request(url, headers={"User-Agent": "Rewind"})
-            with urllib.request.urlopen(req, timeout=60) as r, open(part, "wb") as f:
+            with engine.urlopen(req, timeout=60) as r, open(part, "wb") as f:
                 total, got = int(r.headers.get("Content-Length") or 0), 0
                 while True:
                     chunk = r.read(1 << 18)
@@ -229,7 +229,7 @@ class App:
             import hashlib
             want = ""
             try:
-                with urllib.request.urlopen(urllib.request.Request(self.update["sha"], headers={"User-Agent": "Rewind"}), timeout=30) as r:
+                with engine.urlopen(urllib.request.Request(self.update["sha"], headers={"User-Agent": "Rewind"}), timeout=30) as r:
                     want = r.read().decode("ascii", "replace").split()[0].strip().lower()
             except Exception as e:
                 raise RuntimeError(f"couldn't fetch the checksum: {e}")
@@ -741,7 +741,7 @@ class App:
         req = urllib.request.Request("https://api.openverse.org/v1/audio/?" + urlencode(params),
                                      headers={"User-Agent": "Rewind/1.0 (video editor)", "Accept": "application/json"})
         try:
-            with urllib.request.urlopen(req, timeout=15) as r:
+            with engine.urlopen(req, timeout=15) as r:
                 data = json.load(r)
         except Exception as e:
             log(f"sound search failed: {e}")
@@ -770,7 +770,7 @@ class App:
         if not dest.exists():
             try:
                 req = urllib.request.Request(url, headers={"User-Agent": "Rewind/1.0"})
-                with urllib.request.urlopen(req, timeout=30) as r, open(str(dest) + ".part", "wb") as f:
+                with engine.urlopen(req, timeout=30) as r, open(str(dest) + ".part", "wb") as f:
                     size = 0
                     while True:
                         chunk = r.read(1 << 16)
@@ -1186,13 +1186,20 @@ class Handler(BaseHTTPRequestHandler):
                 q = p.parent / (engine.safe_name(body["title"]) + ".mp4")
                 if q.exists() and q != p:
                     return self._send(200, {"ok": False, "error": "A clip with that name already exists."})
-                p.rename(q)
-                t = engine.thumb_path(p)
-                if t.exists():
-                    t.rename(engine.thumb_path(q))
-                bm = engine.bookmarks_path(p)
-                if bm.exists():
-                    bm.rename(engine.bookmarks_path(q))
+                for i in range(24):                      # the player or the thumbnail maker may still hold the file for a moment
+                    try:
+                        p.rename(q)
+                        break
+                    except PermissionError:
+                        if i == 23:
+                            return self._send(200, {"ok": False, "error": "That clip is still in use. Close the player and try again in a moment."})
+                        time.sleep(0.25)
+                for old, new in ((engine.thumb_path(p), engine.thumb_path(q)), (engine.bookmarks_path(p), engine.bookmarks_path(q))):
+                    try:
+                        if old.exists():
+                            old.rename(new)
+                    except OSError:
+                        pass
                 return self._send(200, {"ok": True, "name": q.relative_to(Path(APP.settings["clips_dir"]).resolve()).as_posix()})
             if path == "/api/open-url":
                 url = body.get("url", "")

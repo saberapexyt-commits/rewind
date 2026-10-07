@@ -1409,9 +1409,13 @@ $("reveal").onclick = () => api("/api/clips/reveal", { name: current });
 async function renameClip() {
   const title = $("cliptitle").value.trim();
   if (!title || title === current.split("/").pop().replace(/\.mp4$/, "")) return;
+  const t = vid.currentTime, was = !vid.paused, oldSrc = vid.getAttribute("src");
+  vid.pause(); vid.removeAttribute("src"); vid.load();                       // let go of the file so Windows lets it be renamed
+  await new Promise((res) => setTimeout(res, 150));
   const r = await api("/api/clips/rename", { name: current, title });
-  if (r.ok) { const t = vid.currentTime, was = !vid.paused; current = r.name; vid.src = "/media/" + encodeURIComponent(r.name); vid.currentTime = t; if (was) vid.play().catch(() => {}); loadClips(); }
-  else { toast({ kind: "error", message: r.error }); $("cliptitle").value = current.split("/").pop().replace(/\.mp4$/, ""); }
+  const back = (name) => { vid.src = name; vid.currentTime = t; if (was) vid.play().catch(() => {}); };
+  if (r.ok) { current = r.name; back("/media/" + encodeURIComponent(r.name)); loadClips(); }
+  else { back(oldSrc); toast({ kind: "error", message: r.error }); $("cliptitle").value = current.split("/").pop().replace(/\.mp4$/, ""); }
 }
 $("cliptitle").addEventListener("keydown", (e) => { e.stopPropagation(); if (e.key === "Enter") { renameClip(); $("cliptitle").blur(); } if (e.key === "Escape") $("cliptitle").blur(); });
 $("cliptitle").addEventListener("blur", renameClip);

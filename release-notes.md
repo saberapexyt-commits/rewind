@@ -1,3 +1,4 @@
-- **Full screen really fills the screen.** When the window fills the screen (or half of it), Windows 11's rounded corners and thin border are turned off, so nothing of what's behind shows at the sides, top or corners. The taskbar stays visible. Going back to a normal window brings the rounded corners back.
+- **Fixes "certificate verify failed: certificate has expired" when sharing a link.** Some PCs have a Windows that's missing newer root certificates, so it can't verify the sharing site. Rewind now falls back to the trusted list built into it, for sharing and for updates, downloads and the free sound search.
+- **Fixes "The process cannot access the file" when renaming a clip.** The player still held the file open. Rewind now lets go of it first, waits a moment if something else is still using it, and says so plainly if it can't.
 
 Download **Rewind.exe** and run it. Installed copies update themselves.

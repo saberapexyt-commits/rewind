@@ -125,6 +125,22 @@ def make_discord_copy(src, target_mb):
     return dest
 
 
+def tls_context(netloc):
+    """A TLS setup that can verify this host. A PC whose Windows lacks newer root certificates fails with
+    "certificate has expired", so in that case use the trusted roots that ship inside Rewind."""
+    ctx = ssl.create_default_context()
+    try:
+        probe = http.client.HTTPSConnection(netloc, timeout=30, context=ctx)
+        probe.connect()
+        probe.close()
+    except ssl.SSLCertVerificationError:
+        import certifi
+        ctx = ssl.create_default_context(cafile=certifi.where())
+    except OSError:
+        pass                                  # no connection right now: the real request reports that
+    return ctx
+
+
 def upload_for_link(path, hours="72h", url=None, progress=lambda pct: None):
     """Upload and return the link the host gives back. hours is 1h/12h/24h/72h, or "forever"."""
     path = Path(path)
@@ -149,7 +165,7 @@ def upload_for_link(path, hours="72h", url=None, progress=lambda pct: None):
     size = path.stat().st_size
     u = urlparse(url)
     if u.scheme == "https":
-        conn = http.client.HTTPSConnection(u.netloc, timeout=120, context=ssl.create_default_context())
+        conn = http.client.HTTPSConnection(u.netloc, timeout=120, context=tls_context(u.netloc))
     else:
         conn = http.client.HTTPConnection(u.netloc, timeout=120)
     try:

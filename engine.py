@@ -98,7 +98,7 @@ def download_ffmpeg(progress=lambda pct: None, urls=None):
         try:
             h = hashlib.sha256()
             req = urllib.request.Request(url, headers={"User-Agent": "Rewind"})
-            with urllib.request.urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
+            with urlopen(req, timeout=60) as r, open(tmp, "wb") as f:
                 total, got = int(r.headers.get("Content-Length") or 0), 0
                 while True:
                     chunk = r.read(1 << 20)
@@ -134,6 +134,28 @@ def run(cmd, timeout=60):
 
 
 LOG_FILE = None          # set by the app, so a helper process can write to the same log
+
+
+def _cert_error(e):
+    import ssl
+    r = getattr(e, "reason", e)
+    return isinstance(r, ssl.SSLCertVerificationError) or "CERTIFICATE_VERIFY_FAILED" in str(e)
+
+
+def urlopen(req, timeout=30):
+    """urllib's urlopen, with one extra try. Some PCs can't verify a website's certificate because their Windows is
+    missing newer root certificates (it shows as "certificate has expired"). Then Rewind tries again with the list
+    of trusted roots that ships inside it."""
+    import ssl
+    import urllib.error
+    import urllib.request
+    try:
+        return urllib.request.urlopen(req, timeout=timeout)
+    except (urllib.error.URLError, ssl.SSLError) as e:
+        if not _cert_error(e):
+            raise
+    import certifi
+    return urllib.request.urlopen(req, timeout=timeout, context=ssl.create_default_context(cafile=certifi.where()))
 
 
 def free_bytes(path):
