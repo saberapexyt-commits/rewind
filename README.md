@@ -30,6 +30,13 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.13
+
+- **Check clip.** A new button in the clip player looks inside a clip and tells you whether a freeze is in the recording itself (the picture stops while the sound goes on, with when and for how long) or whether the file is fine and the player is at fault. It reads the timing of every picture in the file, so it answers "is it the encoder or the playback" for any clip.
+- **Smoother playback.** A new switch in Settings plays clips with the processor instead of the graphics card's video decoder, which can stall on long videos. Restart Rewind after changing it.
+- **Clips open faster.** Saved clips and long recordings now have their index at the front of the file, so players can start and skip around at once instead of reading to the end first. This matters most for long recordings.
+- **"Direct game capture".** The "Game window" option is renamed and explained: it takes the picture straight from the game's window for every game, and is usually lighter on the graphics card than recording the whole screen.
+
 ## 1.6.12
 
 - **Rewind now steps aside for your game.** The recorder runs at lower CPU priority and, once it is running, lower graphics priority, so when a heavy game needs everything the graphics card has, the game goes first. The CPU encoder is also kept to a few threads instead of every core. Rewind's own window checks in less often, and much less when it isn't visible.

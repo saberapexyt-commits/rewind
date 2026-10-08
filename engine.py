@@ -786,7 +786,7 @@ def _join_long(d, final, log, max_len):
     final.parent.mkdir(parents=True, exist_ok=True)
     try:
         r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                 "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=7200)
+                 "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", "-f", "mp4", str(part)], timeout=7200)
         if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
             raise RuntimeError("Couldn't join the recording: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
         seal(part, final, max_len, log)
@@ -1479,7 +1479,7 @@ class Recorder:
             lst = work / "list.txt"
             lst.write_text(concat_list(files, piece_lens), encoding="utf-8")
             r = run([FFMPEG, "-hide_banner", "-v", "error", "-y", "-f", "concat", "-safe", "0", "-i", str(lst),
-                     "-c", "copy", "-avoid_negative_ts", "make_zero", "-f", "mp4", str(part)], timeout=300)
+                     "-c", "copy", "-avoid_negative_ts", "make_zero", "-movflags", "+faststart", "-f", "mp4", str(part)], timeout=300)
             if r.returncode != 0 or not part.exists() or part.stat().st_size < 1000:
                 raise RuntimeError("Couldn't save the clip: " + (r.stderr.strip().splitlines() or ["unknown"])[-1])
             seal(part, final, length + 4 * SEG + 10, self.log)
@@ -1510,6 +1510,75 @@ def keyframe_at_or_before(path, t):
         if "K" in (parts[1] if len(parts) > 1 else "") and pts <= t:
             best = max(best, pts)
     return best
+
+
+def clip_health(path):
+    """Look inside a saved clip and say whether the recording itself has freezes, or the file is fine (so a freeze
+    when watching it comes from the player). Reads only the timing of every picture and sound packet."""
+    path = Path(path)
+    r = run([FFPROBE, "-v", "error", "-show_entries", "format=duration,size:stream=index,codec_type,codec_name,width,height,avg_frame_rate,duration",
+             "-of", "json", str(path)], timeout=120)
+    try:
+        info = json.loads(r.stdout or "{}")
+    except ValueError:
+        info = {}
+    streams = info.get("streams") or []
+    vs = next((s for s in streams if s.get("codec_type") == "video"), None)
+    if not vs:
+        return {"ok": False, "verdict": "This file has no picture, or can't be read."}
+
+    def times(sel):
+        out = run([FFPROBE, "-v", "error", "-select_streams", sel, "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", str(path)], timeout=600)
+        ts, keys = [], []
+        for line in out.stdout.split():
+            parts = line.split(",")
+            try:
+                t = float(parts[0])
+            except ValueError:
+                continue
+            ts.append(t)
+            if len(parts) > 1 and "K" in parts[1]:
+                keys.append(t)
+        ts.sort(); keys.sort()
+        return ts, keys
+    vt, vkeys = times("v:0")
+    at, _ = times("a:0")
+    try:
+        n, d = (vs.get("avg_frame_rate") or "0/1").split("/")
+        fps = float(n) / float(d) if float(d) else 0.0
+    except ValueError:
+        fps = 0.0
+    dt = 1.0 / fps if fps > 1 else 1 / 30
+    freezes = sorted(((b - a, a) for a, b in zip(vt, vt[1:]) if b - a > max(0.25, 4 * dt)), reverse=True)
+    audio_gaps = sum(1 for a, b in zip(at, at[1:]) if b - a > 0.25)
+    longest_key = max((b - a for a, b in zip(vkeys, vkeys[1:])), default=0.0)
+    head = path.read_bytes()[:65536] if path.exists() else b""
+    faststart = b"moov" in head
+    dur = float((info.get("format") or {}).get("duration") or 0)
+    health = {"ok": True, "duration": round(dur, 1), "size_mb": round(path.stat().st_size / 1e6, 1), "fps": round(fps, 1),
+              "size": f"{vs.get('width')}x{vs.get('height')}", "codec": vs.get("codec_name"), "frames": len(vt),
+              "freezes": [{"at": round(a, 1), "secs": round(g, 1)} for g, a in freezes[:5]], "freeze_count": len(freezes),
+              "frozen_total": round(sum(g - dt for g, _ in freezes), 1), "audio_gaps": audio_gaps,
+              "longest_keyframe_gap": round(longest_key, 1), "faststart": faststart}
+    if freezes and freezes[0][0] >= 1.0:
+        g, a = freezes[0]
+        m, s = int(a // 60), int(a % 60)
+        health["verdict"] = (f"The recording itself has {len(freezes)} freeze{'s' if len(freezes) != 1 else ''} in the picture, the longest {g:.1f} seconds "
+                             f"at {m}:{s:02d}. The sound kept going. The screen capture stalled while this was being recorded, so the problem is in the "
+                             "recording, not the player. Try Low impact in Settings, or a smaller clip size.")
+        health["cause"] = "recording"
+    elif freezes:
+        health["verdict"] = (f"The picture has {len(freezes)} short pause{'s' if len(freezes) != 1 else ''} (the longest {freezes[0][0]:.2f} seconds). "
+                             "That's from the game or the screen capture dropping a few frames, not from the player.")
+        health["cause"] = "minor"
+    elif longest_key > 6:
+        health["verdict"] = f"The picture is continuous, but it only has a full frame every {longest_key:.0f} seconds, which can make some players stall when you skip around."
+        health["cause"] = "keyframes"
+    else:
+        health["verdict"] = ("The file is healthy: the picture never stops from start to end. If it still freezes when you watch it, the player is at "
+                             "fault, not the recording. Turn on Smoother playback in Settings, or watch it in another player like VLC.")
+        health["cause"] = "player"
+    return health
 
 
 def clip_problem(path, max_len=None):

@@ -37,6 +37,10 @@
   :focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
 
   /* title bar */
+  .healthbox { margin: 0 0 10px; padding: 12px 14px; border-radius: 10px; background: #14213a; border: 1px solid #25406f; font-size: 13px; line-height: 1.5; color: #cfe0ff; }
+  .healthbox.warn { background: #3a2a14; border-color: #6f4a25; color: #ffe0bf; }
+  .healthbox.good { background: #123023; border-color: #25704a; color: #c9f5de; }
+  .healthbox small { display: block; margin-top: 4px; opacity: .75; }
   .morewrap { display: flex; justify-content: center; padding: 18px 0 8px; }
   .top { grid-area: top; display: flex; align-items: center; padding: 0 0 0 14px; position: relative; user-select: none; }
   .brand { display: flex; align-items: center; gap: 9px; font-weight: 700; font-size: 14.5px; }
@@ -702,6 +706,10 @@
         <div style="display:flex;gap:8px"><button class="btn primary" id="copydiag">Copy report</button><button class="btn" id="openlog">Show log file</button></div>
       </div>
       <div class="set">
+        <div class="lbl"><b>Smoother playback</b><small>Plays clips with your processor instead of the graphics card's video decoder. Try it if a clip freezes while you watch it in Rewind. Restart Rewind after changing it.</small></div>
+        <label class="switch"><input type="checkbox" id="opt-softdecode"><span></span></label>
+      </div>
+      <div class="set">
         <div class="lbl"><b>Protect long recordings</b><small>A tiny helper saves a long recording if Rewind crashes. Turn it off if you think it's getting in the way of something.</small></div>
         <label class="switch"><input type="checkbox" id="opt-guard"><span></span></label>
       </div>
@@ -751,10 +759,12 @@
       </div>
 
       <button class="btn primary" id="openeditor">Open in editor</button>
+      <button class="btn" id="checkclip" title="Look inside this clip for freezes">Check clip</button>
       <button class="btn" id="reveal">Show in folder</button>
       <button class="btn danger" id="delete">Delete</button>
       <button class="btn" id="closeplayer" aria-label="Close player">Close</button>
     </div>
+    <div class="healthbox" id="healthbox" hidden></div>
     <div class="vrow">
     <div class="vstage" id="vstage">
       <video id="video" playsinline></video>
@@ -1156,6 +1166,7 @@ function neighbours() {
 }
 
 function openPlayer(name, bust) {
+  $("healthbox").hidden = true;
   current = name;
   V.dur = 0; V.drag = null;
   const url = "/media/" + encodeURIComponent(name) + (bust ? "?v=" + Date.now() : "");
@@ -1569,9 +1580,9 @@ function renderSettings() {
   $("opt-toast").checked = s.clip_toast !== false; $("opt-toast").onchange = (e) => set({ clip_toast: e.target.checked });
   $("opt-gamefolders").checked = s.game_folders; $("opt-gamefolders").onchange = (e) => set({ game_folders: e.target.checked });
   const wc = st.window_capture;
-  seg("seg-capture", [["auto", "Automatic"], ["screen", "Whole screen"], ["window", "Game window", !wc]], s.capture, "capture");
+  seg("seg-capture", [["auto", "Automatic"], ["screen", "Whole screen"], ["window", "Direct game capture", !wc]], s.capture, "capture");
   $("cap-note").textContent = wc
-    ? "Automatic records the screen, and switches to the game's own window if the game shows up black."
+    ? "Automatic records the screen, and switches to the game's own window if the game shows up black. Direct game capture takes the picture straight from the game's window, for every game, and is usually lighter on your graphics card."
     : "Game window recording needs a newer ffmpeg (version 8 or later). Rewind downloads its own copy on first run.";
   const chip = (label, exe, action, title) => `<span class="chip">${esc(label)}<button data-exe="${esc(exe)}" data-act="${action}" title="${title}" aria-label="${title}">×</button></span>`;
   const wg = s.window_games || [];
@@ -1588,6 +1599,7 @@ function renderSettings() {
   $("opt-desktop").checked = s.desktop_audio; $("opt-desktop").onchange = (e) => set({ desktop_audio: e.target.checked });
   $("opt-mic").checked = s.mic; $("opt-mic").onchange = (e) => set({ mic: e.target.checked });
   $("opt-tray").checked = s.close_to_tray; $("opt-tray").onchange = (e) => set({ close_to_tray: e.target.checked });
+  $("opt-softdecode").checked = !!s.soft_decode; $("opt-softdecode").onchange = (e) => { set({ soft_decode: e.target.checked }); toast({ kind: "note", title: "Restart Rewind", message: "Close it from the tray icon and open it again to apply this." }); };
   $("opt-guard").checked = s.long_guard !== false; $("opt-guard").onchange = (e) => set({ long_guard: e.target.checked });
   $("opt-autostart").checked = !!s.start_with_windows; $("opt-autostart").onchange = (e) => set({ start_with_windows: e.target.checked });
   $("opt-hidden").checked = s.start_hidden; $("opt-hidden").onchange = (e) => set({ start_hidden: e.target.checked });
@@ -1615,6 +1627,13 @@ $("previewtoast").onclick = () => api("/api/overlay/preview", {});
 $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.sound_name, volume: S.settings.sound_volume });
 $("openlog").onclick = () => api("/api/open-log");
 $("copydiag").onclick = async () => { const r = await api("/api/diagnostics"); $("diag-note").textContent = r.ok ? "Copied. Paste it into your message." : "Couldn't copy. Use Show log file instead."; };
+$("checkclip").onclick = async () => {
+  const box = $("healthbox"); box.hidden = false; box.className = "healthbox"; box.textContent = "Checking this clip…";
+  const h = await api("/api/clips/check", { name: current });
+  box.className = "healthbox " + (h.cause === "recording" ? "warn" : h.cause === "player" ? "good" : "");
+  const facts = h.ok ? `${h.size} · ${h.fps} fps · ${clock(h.duration)} · ${h.size_mb} MB · ${h.freeze_count} pause${h.freeze_count === 1 ? "" : "s"}${h.faststart ? "" : " · index at the end"}` : "";
+  box.innerHTML = `${esc(h.verdict)}<small>${esc(facts)}</small>`;
+};
 $("pickfolder").onclick = () => api("/api/pick-folder").then((r) => { if (!r.ok) toast({ kind: "note", title: "Folder not changed", message: "Nothing was picked. You can also type the folder in the box below." }); loadClips(); });
 $("usefolder").onclick = async () => {
   const r = await api("/api/set-folder", { path: $("folderpath").value });

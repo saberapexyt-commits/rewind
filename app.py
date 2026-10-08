@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.12"
+VERSION = "1.6.13"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -58,7 +58,7 @@ DEFAULTS = {
     "hotkey": {"mods": 1, "vk": 0x77, "label": "Alt + F8"},
     "hotkey_record": {"mods": 1, "vk": 0x76, "label": "Alt + F7"},
     "hotkey_bookmark": None, "share_ok": False,
-    "clip_toast": True, "sound": True, "sound_name": "clip", "sound_volume": "medium",
+    "clip_toast": True, "soft_decode": False, "sound": True, "sound_name": "clip", "sound_volume": "medium",
     "capture": "auto", "capture_input": "", "window_games": [], "game_only": False, "game_folders": True, "ignored_games": [],
     "close_to_tray": True, "start_with_windows": False, "long_guard": True, "auto_update": True, "skipped_version": "", "start_hidden": False,
     "clips_dir": winbits.default_clips_dir(),
@@ -1199,6 +1199,12 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/open-folder":
                 winbits.open_folder(APP.settings["clips_dir"])
                 return self._send(200, {"ok": True})
+            if path == "/api/clips/check":
+                try:
+                    return self._send(200, engine.clip_health(APP.clip_path(body["name"])))
+                except Exception as e:
+                    log(f"clip check failed: {e}")
+                    return self._send(200, {"ok": False, "verdict": "Couldn't check this clip: " + str(e)})
             if path == "/api/clips/reveal":
                 winbits.reveal(APP.clip_path(body["name"]))
                 return self._send(200, {"ok": True})
@@ -1420,6 +1426,10 @@ def main():
         saved_geom = APP.settings.get("window")
         if saved_geom:
             APP.window.events.shown += lambda: threading.Timer(0.5, lambda: APP.winmgr.apply(saved_geom)).start()
+    if APP.settings.get("soft_decode"):
+        # play clips with the processor instead of the graphics card's video decoder, which can stall on long videos
+        extra = os.environ.get("WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS", "")
+        os.environ["WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS"] = (extra + " --disable-accelerated-video-decode").strip()
     webview.start(private_mode=False)
     APP.quit()
 
