@@ -24,7 +24,7 @@ import sfx
 import share
 import winbits
 
-VERSION = "1.6.14"
+VERSION = "1.6.15"
 APP_DIR = engine.APP_DIR
 RES_DIR = Path(getattr(sys, "_MEIPASS", APP_DIR))
 UI_FILE = Path(os.environ.get("REWIND_UI_FILE") or RES_DIR / "ui" / "index.html")
@@ -675,6 +675,44 @@ class App:
                 self._waves.pop(next(iter(self._waves)))
         return {"ok": True, "rate": 20, "peaks": self._waves[key]}
 
+    def filmstrip(self, p, n):
+        """One picture of n small frames, evenly spread through a clip, for the trim bar. Made with ffmpeg and kept next
+        to the thumbnail, so the player doesn't need a second copy of the video decoding while the clip plays."""
+        import io
+        from concurrent.futures import ThreadPoolExecutor
+        from PIL import Image
+        n = max(4, min(int(n), 40))
+        out = engine.thumb_path(p).with_name(p.stem + f".strip{n}.jpg")
+        try:
+            if out.exists() and out.stat().st_mtime >= p.stat().st_mtime:
+                return out.read_bytes()
+        except OSError:
+            pass
+        dur = engine.duration_of(p) or 1.0
+
+        def grab(i):
+            t = max(0.0, min(dur - 0.1, (i + 0.5) / n * dur))
+            r = subprocess.run([engine.FFMPEG, "-v", "error", "-ss", f"{t:.2f}", "-noaccurate_seek", "-i", str(p), "-frames:v", "1",
+                                "-vf", "scale=160:90:force_original_aspect_ratio=increase,crop=160:90", "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "5", "-"],
+                               capture_output=True, creationflags=0x08000000 | 0x4000, stdin=subprocess.DEVNULL, timeout=60)
+            return i, r.stdout
+        sheet = Image.new("RGB", (160 * n, 90), (16, 16, 18))
+        with ThreadPoolExecutor(4) as ex:
+            for i, data in ex.map(grab, range(n)):
+                if data:
+                    try:
+                        sheet.paste(Image.open(io.BytesIO(data)).convert("RGB"), (160 * i, 0))
+                    except Exception:
+                        pass
+        buf = io.BytesIO()
+        sheet.save(buf, "JPEG", quality=78)
+        try:
+            out.parent.mkdir(exist_ok=True)
+            out.write_bytes(buf.getvalue())
+        except OSError:
+            pass
+        return buf.getvalue()
+
     def pick_audio(self):
         types = ("Audio and video (*.mp3;*.wav;*.m4a;*.aac;*.ogg;*.flac;*.opus;*.mp4;*.mov;*.mkv;*.webm)", "All files (*.*)")
         try:
@@ -1025,6 +1063,9 @@ class Handler(BaseHTTPRequestHandler):
                 except ValueError:
                     n = 400
                 return self._send(200, APP.clips(max(50, min(n, 10000))))
+            if path.startswith("/strip/"):
+                n = int(parse_qs(urlparse(self.path).query).get("n", ["14"])[0])
+                return self._send(200, APP.filmstrip(APP.clip_path(unquote(path[7:])), n), "image/jpeg")
             if path.startswith("/thumb/"):
                 p = engine.thumb_path(APP.clip_path(unquote(path[7:])))
                 if not p.exists():

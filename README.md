@@ -30,6 +30,11 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.15
+
+- **The trim bar no longer decodes a second copy of the video.** Rewind used to open the clip a second time inside the player and seek through it to paint the thumbnails on the trim bar, at the same moment your clip started playing. On big clips that is a likely cause of the player stuttering or freezing. The thumbnails are now made once by the app, kept next to the clip's thumbnail, and shown instantly the next time (about half a second the first time on a 1:28 clip).
+- **Check clip also catches a picture that stops changing.** A stalled capture can keep repeating the last picture with perfectly regular timing, which the timing check couldn't see. Check clip now finds those stretches (when, and for how long) and says whether the freeze is in the recording or in the player.
+
 ## 1.6.14
 
 - **Fixes the clip player running off the bottom of the window.** On a window that isn't very tall, the trim bar sat on the very edge and Save as copy / Replace original were cut off, so you couldn't save a cut. The video now shrinks to leave room for the trim bar and the buttons at any window height (the Check clip message makes room too), and the player scrolls as a last resort. I checked it at four window sizes, with and without the message, and the buttons stay visible and the trim handles still drag.

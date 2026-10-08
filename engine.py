@@ -1528,21 +1528,18 @@ def clip_health(path):
         return {"ok": False, "verdict": "This file has no picture, or can't be read."}
 
     def times(sel):
-        out = run([FFPROBE, "-v", "error", "-select_streams", sel, "-show_entries", "packet=pts_time,flags", "-of", "csv=p=0", str(path)], timeout=600)
-        ts, keys = [], []
+        out = run([FFPROBE, "-v", "error", "-select_streams", sel, "-show_entries", "packet=pts_time,size,flags", "-of", "csv=p=0", str(path)], timeout=600)
+        rows = []
         for line in out.stdout.split():
             parts = line.split(",")
             try:
-                t = float(parts[0])
+                rows.append((float(parts[0]), int(parts[1]) if len(parts) > 1 else 0, len(parts) > 2 and "K" in parts[2]))
             except ValueError:
                 continue
-            ts.append(t)
-            if len(parts) > 1 and "K" in parts[1]:
-                keys.append(t)
-        ts.sort(); keys.sort()
-        return ts, keys
-    vt, vkeys = times("v:0")
-    at, _ = times("a:0")
+        rows.sort()
+        return [r[0] for r in rows], [r[0] for r in rows if r[2]], rows
+    vt, vkeys, vrows = times("v:0")
+    at, _, _ = times("a:0")
     try:
         n, d = (vs.get("avg_frame_rate") or "0/1").split("/")
         fps = float(n) / float(d) if float(d) else 0.0
@@ -1552,6 +1549,27 @@ def clip_health(path):
     freezes = sorted(((b - a, a) for a, b in zip(vt, vt[1:]) if b - a > max(0.25, 4 * dt)), reverse=True)
     audio_gaps = sum(1 for a, b in zip(at, at[1:]) if b - a > 0.25)
     longest_key = max((b - a for a, b in zip(vkeys, vkeys[1:])), default=0.0)
+    # A capture that stalls can keep repeating the last picture with perfectly regular timing. Those repeated pictures
+    # compress to almost nothing, so a long run of tiny packets is a stretch where the picture did not change at all.
+    stills = []
+    P = [r for r in vrows if not r[2]]
+    if len(P) > 30:
+        sizes = sorted(r[1] for r in P)
+        typical = sizes[len(sizes) // 2]
+        tiny = max(200, 0.02 * typical)
+        need = max(8, int(0.5 * (fps or 30)))
+        i = 0
+        while i < len(P):
+            if P[i][1] < tiny:
+                j = i
+                while j < len(P) and P[j][1] < tiny:
+                    j += 1
+                if j - i >= need:
+                    stills.append((P[j - 1][0] - P[i][0] + dt, P[i][0]))
+                i = j
+            else:
+                i += 1
+        stills.sort(reverse=True)
     head = path.read_bytes()[:65536] if path.exists() else b""
     faststart = b"moov" in head
     dur = float((info.get("format") or {}).get("duration") or 0)
@@ -1559,7 +1577,8 @@ def clip_health(path):
               "size": f"{vs.get('width')}x{vs.get('height')}", "codec": vs.get("codec_name"), "frames": len(vt),
               "freezes": [{"at": round(a, 1), "secs": round(g, 1)} for g, a in freezes[:5]], "freeze_count": len(freezes),
               "frozen_total": round(sum(g - dt for g, _ in freezes), 1), "audio_gaps": audio_gaps,
-              "longest_keyframe_gap": round(longest_key, 1), "faststart": faststart}
+              "longest_keyframe_gap": round(longest_key, 1), "faststart": faststart,
+              "stills": [{"at": round(a, 1), "secs": round(g, 1)} for g, a in stills[:5]], "still_count": len(stills)}
     if freezes and freezes[0][0] >= 1.0:
         g, a = freezes[0]
         m, s = int(a // 60), int(a % 60)
@@ -1567,6 +1586,14 @@ def clip_health(path):
                              f"at {m}:{s:02d}. The sound kept going. The screen capture stalled while this was being recorded, so the problem is in the "
                              "recording, not the player. Try Low impact in Settings, or a smaller clip size.")
         health["cause"] = "recording"
+    elif stills and stills[0][0] >= 0.7:
+        g, a = stills[0]
+        m, s = int(a // 60), int(a % 60)
+        health["verdict"] = (f"The picture stops changing {len(stills)} time{'s' if len(stills) != 1 else ''} while the sound carries on, the longest for {g:.1f} seconds "
+                             f"at {m}:{s:02d}. The timing in the file is fine, but the same picture is repeated. That means the game froze, or the screen capture "
+                             "wasn't handed new pictures during that time (a heavy game using the whole graphics card). It is in the recording, not the player. "
+                             "Try Low impact or Direct game capture in Settings.")
+        health["cause"] = "still"
     elif freezes:
         health["verdict"] = (f"The picture has {len(freezes)} short pause{'s' if len(freezes) != 1 else ''} (the longest {freezes[0][0]:.2f} seconds). "
                              "That's from the game or the screen capture dropping a few frames, not from the player.")

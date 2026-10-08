@@ -1215,22 +1215,18 @@ function buildRuler() {
 }
 function clearStrip() { const c = $("filmstrip"); c.getContext("2d").clearRect(0, 0, c.width, c.height); }
 async function buildFilmstrip(url) {
+  // The pictures come from the app (made once with ffmpeg and kept), so the player isn't decoding a second copy of the
+  // video while the clip plays. A second decoder is a likely reason long clips stuttered.
   const token = V.filmToken = (V.filmToken || 0) + 1;
-  const fv = document.createElement("video");
-  fv.muted = true; fv.preload = "auto"; fv.src = url;
-  await new Promise((r) => { fv.onloadedmetadata = r; fv.onerror = r; });
-  if (token !== V.filmToken || !fv.duration) return;
   const c = $("filmstrip"), dpr = devicePixelRatio || 1;
   const W = $("strip").clientWidth, H = $("strip").clientHeight;
+  const tile = Math.max(60, Math.round(H * 16 / 9)), n = Math.min(40, Math.ceil(W / tile));
+  const img = new Image();
+  img.src = `/strip/${encodeURIComponent(current)}?n=${n}`;
+  await new Promise((r) => { img.onload = r; img.onerror = r; });
+  if (token !== V.filmToken || !img.naturalWidth) return;
   c.width = W * dpr; c.height = H * dpr;
-  const g = c.getContext("2d"), tile = Math.max(60, Math.round(H * 16 / 9)), n = Math.ceil(W / tile);
-  for (let i = 0; i < n; i++) {
-    if (token !== V.filmToken) return;
-    fv.currentTime = Math.min(fv.duration - 0.05, ((i + 0.5) / n) * fv.duration);
-    await new Promise((r) => { fv.onseeked = r; setTimeout(r, 1500); });
-    g.drawImage(fv, i * tile * dpr, 0, tile * dpr, H * dpr);
-  }
-  fv.removeAttribute("src"); fv.load();
+  c.getContext("2d").drawImage(img, 0, 0, n * tile * dpr, H * dpr);
 }
 
 function updateSel() {
