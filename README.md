@@ -30,6 +30,10 @@ Put `ffmpeg.exe` and `ffprobe.exe` in this folder (or on PATH), then double-clic
 - Clips: watch, rename, show in folder, or delete (to the Recycle Bin).
 - Settings: replay length (15s to 5m), shortcut, encoder, display, frame rate, quality, game sound, mic, and clips folder.
 
+## 1.6.14
+
+- **Fixes the clip player running off the bottom of the window.** On a window that isn't very tall, the trim bar sat on the very edge and Save as copy / Replace original were cut off, so you couldn't save a cut. The video now shrinks to leave room for the trim bar and the buttons at any window height (the Check clip message makes room too), and the player scrolls as a last resort. I checked it at four window sizes, with and without the message, and the buttons stay visible and the trim handles still drag.
+
 ## 1.6.13
 
 - **Check clip.** A new button in the clip player looks inside a clip and tells you whether a freeze is in the recording itself (the picture stops while the sound goes on, with when and for how long) or whether the file is fine and the player is at fault. It reads the timing of every picture in the file, so it answers "is it the encoder or the playback" for any clip.

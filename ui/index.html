@@ -360,12 +360,13 @@
   .navarrow { width: 48px; height: 48px; border-radius: 50%; border: 0; background: rgba(255,255,255,.06); color: #fff; display: grid; place-items: center; }
   .navarrow:hover { background: rgba(255,255,255,.14); } .navarrow:disabled { opacity: .25; cursor: default; }
   .navarrow svg { width: 24px; height: 24px; }
-  .viewer { background: #0e0e10; border-radius: 14px; overflow: hidden; display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+  .viewer { --stage-h: clamp(150px, calc(100vh - 410px), 560px); background: #0e0e10; border-radius: 14px; overflow-x: hidden; overflow-y: auto; display: flex; flex-direction: column; max-height: calc(100vh - 40px); }
+  .viewer.hasmsg { --stage-h: clamp(120px, calc(100vh - 505px), 560px); }
   .vhead { display: flex; align-items: center; gap: 10px; padding: 12px 14px; }
   .vhead input { flex: 1; min-width: 0; height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid transparent; background: transparent; font-size: 16px; font-weight: 700; }
   .vhead input:hover { background: #17171a; } .vhead input:focus { background: #17171a; border-color: var(--line-2); outline: 0; }
   .vmeta { color: var(--muted); font-size: 12.5px; white-space: nowrap; }
-  .vstage { position: relative; background: #000; height: min(52vh, 560px); flex: none; overflow: hidden; cursor: pointer; }
+  .vstage { position: relative; background: #000; height: var(--stage-h); flex: none; overflow: hidden; cursor: pointer; }
   .vstage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; display: block; }
   .vbar { position: absolute; left: 0; right: 0; bottom: 0; padding: 40px 14px 8px; background: linear-gradient(transparent, rgba(0,0,0,.78)); opacity: 0; transition: opacity .15s; cursor: default; }
   .vstage:hover .vbar, .vstage.paused .vbar { opacity: 1; }
@@ -423,9 +424,9 @@
   .updbtns .btn { height: 32px; font-size: 13px; }
 
   /* ===== vertical formats ===== */
-  .vrow { display: flex; height: min(52vh, 560px); flex: none; background: #000; }
+  .vrow { display: flex; height: var(--stage-h); flex: none; background: #000; }
   .vrow .vstage { flex: 1; height: 100%; min-width: 0; }
-  .vpanel { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; background: #08080a; border-left: 1px solid #1c1c20; width: calc(min(52vh, 560px) * 0.5625 + 28px); flex: none; }
+  .vpanel { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 14px; background: #08080a; border-left: 1px solid #1c1c20; width: calc(var(--stage-h) * 0.5625 + 28px); flex: none; }
   .vpanel[hidden] { display: none; }
   .vpanel canvas { flex: 1; min-height: 0; aspect-ratio: 9 / 16; max-width: 100%; border-radius: 10px; background: #000; cursor: grab; touch-action: none; }
   .vpanel canvas:active { cursor: grabbing; }
@@ -1166,7 +1167,7 @@ function neighbours() {
 }
 
 function openPlayer(name, bust) {
-  $("healthbox").hidden = true;
+  $("healthbox").hidden = true; $("viewer").classList.remove("hasmsg");
   current = name;
   V.dur = 0; V.drag = null;
   const url = "/media/" + encodeURIComponent(name) + (bust ? "?v=" + Date.now() : "");
@@ -1628,7 +1629,7 @@ $("playsound").onclick = () => api("/api/sound/preview", { name: S.settings.soun
 $("openlog").onclick = () => api("/api/open-log");
 $("copydiag").onclick = async () => { const r = await api("/api/diagnostics"); $("diag-note").textContent = r.ok ? "Copied. Paste it into your message." : "Couldn't copy. Use Show log file instead."; };
 $("checkclip").onclick = async () => {
-  const box = $("healthbox"); box.hidden = false; box.className = "healthbox"; box.textContent = "Checking this clip…";
+  const box = $("healthbox"); box.hidden = false; box.className = "healthbox"; box.textContent = "Checking this clip…"; $("viewer").classList.add("hasmsg");
   const h = await api("/api/clips/check", { name: current });
   box.className = "healthbox " + (h.cause === "recording" ? "warn" : h.cause === "player" ? "good" : "");
   const facts = h.ok ? `${h.size} · ${h.fps} fps · ${clock(h.duration)} · ${h.size_mb} MB · ${h.freeze_count} pause${h.freeze_count === 1 ? "" : "s"}${h.faststart ? "" : " · index at the end"}` : "";
